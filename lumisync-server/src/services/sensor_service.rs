@@ -43,7 +43,7 @@ impl SensorService {
 
         if let Some(auth) = &gateway.auth {
             let mut root_cert_store = RootCertStore::empty();
-            root_cert_store.add_parsable_certificates(rustls_native_certs::load_native_certs()?);
+            root_cert_store.add_parsable_certificates(rustls_native_certs::load_native_certs().unwrap());
 
             let certs = certs(&mut io::BufReader::new(fs::File::open(&auth.cert_path)?))
                 .map(|result| result.unwrap())
