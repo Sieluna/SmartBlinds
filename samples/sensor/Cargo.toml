@@ -1,0 +1,15 @@
+[package]
+name = "sensor"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sensor"
+harness = false # do not use the built in cargo test harness -> resolve rust-analyzer errors
+
+[dependencies]
+esp-idf-svc = { version = "0.49", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
+log = "0.4"
+
+[build-dependencies]
+embuild = "0.32"

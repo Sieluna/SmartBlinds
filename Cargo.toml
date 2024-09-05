@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "lumisync-embedded",
     "lumisync-analyser",
+    "lumisync-embedded",
     "lumisync-server",
     "lumisync-mock"
 ]
-exclude = []
+exclude = ["samples"]
 resolver = "2"
 
 [workspace.dependencies]

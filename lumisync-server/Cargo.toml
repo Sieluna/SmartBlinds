@@ -3,13 +3,6 @@ name = "lumisync-server"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-[[bin]]
-name = "server"
-path = "src/main.rs"
-
 [dependencies]
 analyser.workspace = true
 argon2 = "0.5"
