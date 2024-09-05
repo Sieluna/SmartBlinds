@@ -4,7 +4,7 @@ use axum::body::{Body, to_bytes};
 use axum::http;
 use axum::http::{Request, StatusCode};
 use chrono::Utc;
-use tower::ServiceExt;
+use tower::util::ServiceExt;
 
 use lumisync_server::handles::region_handle::RegionBody;
 use lumisync_server::handles::sensor_handle::SensorBody;

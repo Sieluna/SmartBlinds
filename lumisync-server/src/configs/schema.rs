@@ -15,36 +15,38 @@ pub struct SchemaManager {
 }
 
 impl SchemaManager {
-    pub fn new(tables: Vec<Box<dyn Table>>) -> Self {
-        let mut manager = Self { tables };
-        manager.sort_tables();
-        manager
+    pub fn new(mut tables: Vec<Box<dyn Table>>) -> Self {
+        Self::sort_tables(&mut tables);
+        Self { tables }
     }
 
-    fn sort_tables(&mut self) {
-        let mut sorted = vec![];
-        let mut to_sort: Vec<_> = self.tables.iter().map(|t| (t.dependencies(), t.clone_table())).collect();
-        let mut independent;
+    fn sort_tables(tables: &mut Vec<Box<dyn Table>>) {
+        let mut to_sort = std::mem::take(tables);
+        let mut deps_list: Vec<_> = to_sort.iter().map(|t| t.dependencies()).collect();
+        let mut sorted = Vec::with_capacity(to_sort.len());
 
         while !to_sort.is_empty() {
-            independent = to_sort.iter().enumerate()
-                .filter(|(_, (deps, _))| deps.is_empty())
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
+            let independent_indices: Vec<usize> = deps_list.iter().enumerate()
+                .filter(|(_, deps)| deps.is_empty())
+                .map(|(i, _)| i)
+                .collect();
 
-            assert!(!independent.is_empty(), "Circular dependency detected or unresolved dependencies exist.");
+            assert!(!independent_indices.is_empty(), "Circular dependency detected or unresolved dependencies exist.");
 
-            for &index in independent.iter().rev() {
-                let (_, table) = to_sort.swap_remove(index);
+            for &index in independent_indices.iter().rev() {
+                let table = to_sort.swap_remove(index);
+                let _ = deps_list.swap_remove(index);
                 sorted.push(table);
             }
 
-            to_sort.iter_mut().for_each(|(deps, _)| {
-                *deps = deps.iter().filter(|dep| !sorted.iter().any(|t| t.name() == **dep)).map(|&s| s).collect();
-            });
+            for deps in deps_list.iter_mut() {
+                deps.retain(|dep_name| {
+                    !sorted.iter().any(|resolved_table| resolved_table.name() == *dep_name)
+                });
+            }
         }
 
-        self.tables = sorted.iter().map(|t| t.clone_table()).collect();
+        *tables = sorted;
     }
 
     pub fn create_schema(&self) -> Vec<String> {
