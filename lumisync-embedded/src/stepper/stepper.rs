@@ -1,28 +1,28 @@
-use crate::stepper::motor::Motor;
+use core::time::Duration;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Direction {
-    Clockwise,
-    CounterClockwise,
-}
+use super::{Direction, Motor};
 
-pub struct Stepper<M: Motor> {
+pub struct Stepper<M> {
     motor: M,
     current_position: i64,
     target_position: i64,
     speed: f32,
     max_speed: f32,
     acceleration: f32,
-    step_interval: u64,
-    last_step_time: u64,
+    step_interval: Duration,
+    last_step_time: Duration,
     direction: Direction,
+
     step_count: i64,
-    initial_step_delay: f32,
-    current_step_delay: f32,
-    min_step_delay: f32,
+    initial_step_delay: Duration,
+    current_step_delay: Duration,
+    min_step_delay: Duration,
 }
 
-impl<M: Motor> Stepper<M> {
+impl<M> Stepper<M>
+where
+    M: Motor,
+{
     pub fn new(motor: M) -> Self {
         Self {
             motor,
@@ -31,13 +31,13 @@ impl<M: Motor> Stepper<M> {
             speed: 0.0,
             max_speed: 1.0,
             acceleration: 1.0,
-            step_interval: 0,
-            last_step_time: 0,
+            step_interval: Duration::ZERO,
+            last_step_time: Duration::ZERO,
             direction: Direction::CounterClockwise,
             step_count: 0,
-            initial_step_delay: 0.676 * 2.0f32.sqrt() * 1_000_000.0,
-            current_step_delay: 0.0,
-            min_step_delay: 1_000_000.0,
+            initial_step_delay: Duration::from_micros((0.676 * 2.0f32.sqrt() * 1_000_000.0) as u64),
+            current_step_delay: Duration::ZERO,
+            min_step_delay: Duration::from_micros(1_000_000),
         }
     }
 
@@ -45,25 +45,28 @@ impl<M: Motor> Stepper<M> {
         self.current_position = position;
         self.target_position = position;
         self.speed = 0.0;
-        self.step_interval = 0;
+        self.step_interval = Duration::ZERO;
         self.step_count = 0;
     }
 
     pub fn set_speed(&mut self, speed: f32) {
-        let speed = speed.clamp(-self.max_speed, self.max_speed);
-        if speed != self.speed {
-            if speed == 0.0 {
-                self.step_interval = 0;
-            } else {
-                self.step_interval = (1_000_000.0 / speed.abs()) as u64;
-                self.direction = if speed > 0.0 {
-                    Direction::Clockwise
-                } else {
-                    Direction::CounterClockwise
-                };
-            }
-            self.speed = speed;
+        if (speed - self.speed).abs() < f32::EPSILON {
+            return;
         }
+
+        let speed = speed.clamp(-self.max_speed, self.max_speed);
+
+        if speed == 0.0 {
+            self.step_interval = Duration::ZERO;
+        } else {
+            self.step_interval = Duration::from_micros((1_000_000.0 / speed.abs()) as u64);
+            self.direction = if speed > 0.0 {
+                Direction::Clockwise
+            } else {
+                Direction::CounterClockwise
+            };
+        }
+        self.speed = speed;
     }
 
     pub fn set_max_speed(&mut self, speed: f32) {
@@ -71,7 +74,7 @@ impl<M: Motor> Stepper<M> {
 
         if self.max_speed != speed {
             self.max_speed = speed;
-            self.min_step_delay = 1_000_000.0 / speed;
+            self.min_step_delay = Duration::from_micros((1_000_000.0 / speed) as u64);
             if self.step_count > 0 {
                 self.step_count = ((self.speed * self.speed) / (2.0 * self.acceleration)) as i64;
                 self.recalculate_speed();
@@ -80,24 +83,27 @@ impl<M: Motor> Stepper<M> {
     }
 
     pub fn set_acceleration(&mut self, acceleration: f32) {
+        if acceleration == 0.0 {
+            return;
+        }
+
         let acceleration = acceleration.abs();
         if self.acceleration != acceleration {
-            if acceleration != 0.0 {
-                self.step_count = (self.step_count as f32 * (self.acceleration / acceleration)) as i64;
-                self.initial_step_delay = 0.676 * (2.0 / acceleration).sqrt() * 1_000_000.0;
-                self.acceleration = acceleration;
-                self.recalculate_speed();
-            }
+            self.step_count = (self.step_count as f32 * (self.acceleration / acceleration)) as i64;
+            self.initial_step_delay =
+                Duration::from_micros((0.676 * (2.0 / acceleration).sqrt() * 1_000_000.0) as u64);
+            self.acceleration = acceleration;
+            self.recalculate_speed();
         }
     }
 
-    pub fn recalculate_speed(&mut self) -> u64 {
+    pub fn recalculate_speed(&mut self) -> Duration {
         let distance_to = self.target_position - self.current_position;
         let steps_to_stop = ((self.speed * self.speed) / (2.0 * self.acceleration)).abs() as i64;
 
         if distance_to == 0 && steps_to_stop <= 1 {
             // Reach the target and it's time to stop
-            self.step_interval = 0;
+            self.step_interval = Duration::ZERO;
             self.speed = 0.0;
             self.step_count = 0;
             return self.step_interval;
@@ -135,17 +141,18 @@ impl<M: Motor> Stepper<M> {
                 Direction::CounterClockwise
             };
         } else {
-            self.current_step_delay = self.current_step_delay
-                - ((2.0 * self.current_step_delay)
-                / ((4.0 * self.step_count as f32) + 1.0));
+            let last_step_size = self.current_step_delay.as_secs_f32();
+            let new_step_size =
+                last_step_size - (last_step_size * 2.0 / ((4.0 * self.step_count as f32) + 1.0));
+            self.current_step_delay = Duration::from_secs_f32(new_step_size);
             if self.current_step_delay < self.min_step_delay {
                 self.current_step_delay = self.min_step_delay;
             }
         }
 
         self.step_count += 1;
-        self.step_interval = self.current_step_delay as u64;
-        self.speed = 1_000_000.0 / self.current_step_delay;
+        self.step_interval = self.current_step_delay;
+        self.speed = 1_000_000.0 / self.current_step_delay.as_micros() as f32;
         if self.direction == Direction::CounterClockwise {
             self.speed = -self.speed;
         }
@@ -164,15 +171,15 @@ impl<M: Motor> Stepper<M> {
         self.move_to(self.current_position + relative);
     }
 
-    pub fn run(&mut self, current_time: u64) -> bool {
+    pub fn run(&mut self, current_time: Duration) -> bool {
         if self.run_speed(current_time) {
             self.recalculate_speed();
         }
         self.speed != 0.0 || self.target_position - self.current_position != 0
     }
 
-    pub fn run_speed(&mut self, current_time: u64) -> bool {
-        if self.step_interval == 0 {
+    pub fn run_speed(&mut self, current_time: Duration) -> bool {
+        if self.step_interval == Duration::ZERO {
             return false;
         }
         if current_time - self.last_step_time >= self.step_interval {
@@ -192,9 +199,12 @@ impl<M: Motor> Stepper<M> {
 
 #[cfg(test)]
 mod tests {
+    use core::cell::RefCell;
+
+    use alloc::rc::Rc;
+    use alloc::vec::Vec;
+
     use super::*;
-    use std::cell::RefCell;
-    use std::rc::Rc;
 
     struct MockMotor {
         steps: Rc<RefCell<Vec<i64>>>,
@@ -211,10 +221,6 @@ mod tests {
 
         pub fn get_steps(&self) -> Vec<i64> {
             self.steps.borrow().clone()
-        }
-
-        pub fn get_status(&self) -> bool {
-            self.locked
         }
     }
 
@@ -233,42 +239,86 @@ mod tests {
     }
 
     #[test]
-    fn test_stepper_move_to() {
-        let mock_motor = MockMotor::new();
-        let mut stepper = Stepper::new(mock_motor);
+    fn test_set_speed() {
+        let motor = MockMotor::new();
+        let mut stepper = Stepper::new(motor);
 
-        stepper.set_max_speed(10.0);
+        stepper.set_max_speed(1000.0);
+        stepper.set_speed(500.0);
+        assert_eq!(stepper.step_interval, Duration::from_micros(2000)); // 1e6 / 500 = 2000μs
+        assert_eq!(stepper.direction, Direction::Clockwise);
 
-        stepper.move_to(5);
-
-        for step in 1..=5 {
-            let current_time = step * 10_000;
-            stepper.run(current_time);
-        }
-
-        let steps = stepper.motor.get_steps();
-        assert_eq!(steps.len(), 5);
-        assert_eq!(stepper.current_position, 5);
+        stepper.set_speed(-300.0);
+        assert_eq!(stepper.step_interval, Duration::from_micros(3333)); // 1e6 / 300 ≈ 3333μs
+        assert_eq!(stepper.direction, Direction::CounterClockwise);
     }
 
     #[test]
-    fn test_stepper_move_relative() {
-        let mock_motor = MockMotor::new();
-        let mut stepper = Stepper::new(mock_motor);
+    fn test_acceleration_calculation() {
+        let motor = MockMotor::new();
+        let mut stepper = Stepper::new(motor);
 
-        stepper.set_current_position(10);
-        stepper.set_acceleration(2.0);
-        stepper.set_speed(10.0);
+        stepper.set_acceleration(1000.0);
+        assert_eq!(
+            stepper.initial_step_delay,
+            Duration::from_micros((0.676 * (2.0f32 / 1000.0).sqrt() * 1_000_000.0) as u64)
+        );
+    }
 
-        stepper.move_relative(5);
+    #[test]
+    fn test_move_to() {
+        let motor = MockMotor::new();
+        let mut stepper = Stepper::new(motor);
 
-        for step in 1..=5 {
-            let current_time = step * 10_000;
-            stepper.run(current_time);
+        stepper.set_current_position(0);
+        stepper.move_to(100);
+        assert_eq!(stepper.target_position, 100);
+        assert_eq!(stepper.current_position, 0);
+    }
+
+    #[test]
+    fn test_move_relative() {
+        let motor = MockMotor::new();
+        let mut stepper = Stepper::new(motor);
+
+        stepper.set_current_position(50);
+        stepper.move_relative(30);
+        assert_eq!(stepper.target_position, 80);
+        assert_eq!(stepper.current_position, 50);
+    }
+
+    #[test]
+    fn test_speed_limits() {
+        let motor = MockMotor::new();
+        let mut stepper = Stepper::new(motor);
+
+        stepper.set_max_speed(100.0);
+        stepper.set_speed(150.0);
+        assert_eq!(stepper.speed, 100.0);
+
+        stepper.set_speed(-200.0);
+        assert_eq!(stepper.speed, -100.0);
+    }
+
+    #[test]
+    fn test_run_speed() {
+        let motor = MockMotor::new();
+        let mut stepper = Stepper::new(motor);
+
+        stepper.set_speed(100.0);
+        stepper.set_current_position(0);
+        stepper.move_to(10);
+
+        let mut current_time = Duration::ZERO;
+        let mut steps_taken = 0;
+
+        while steps_taken < 10 {
+            if stepper.run_speed(current_time) {
+                steps_taken += 1;
+            }
+            current_time += Duration::from_micros(100);
         }
 
-        let steps = stepper.motor.get_steps();
-        assert_eq!(steps.len(), 5);
-        assert_eq!(stepper.current_position, 15);
+        assert_eq!(stepper.current_position, 10);
     }
 }

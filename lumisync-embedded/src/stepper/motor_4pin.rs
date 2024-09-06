@@ -1,9 +1,10 @@
-use crate::stepper::motor::Motor;
 use embedded_hal::digital::OutputPin;
+
+use super::Motor;
 
 pub struct FourPinMotor<Pin>
 where
-    Pin: OutputPin
+    Pin: OutputPin,
 {
     pins: [Pin; 4],
     pin_inverted: [bool; 4],
@@ -11,13 +12,10 @@ where
 
 impl<Pin> FourPinMotor<Pin>
 where
-    Pin: OutputPin
+    Pin: OutputPin,
 {
     pub fn new(pins: [Pin; 4], pin_inverted: [bool; 4]) -> Self {
-        Self {
-            pins,
-            pin_inverted,
-        }
+        Self { pins, pin_inverted }
     }
 
     fn set_output_pins(&mut self, mask: u8) {
@@ -34,14 +32,14 @@ where
 
 impl<Pin> Motor for FourPinMotor<Pin>
 where
-    Pin: OutputPin
+    Pin: OutputPin,
 {
     fn step(&mut self, step: i64) {
         match step & 0x3 {
-            0 => self.set_output_pins(0b0101),
-            1 => self.set_output_pins(0b0110),
-            2 => self.set_output_pins(0b1010),
-            3 => self.set_output_pins(0b1001),
+            0 => self.set_output_pins(0b0101), // A1+B1
+            1 => self.set_output_pins(0b0011), // A1+A2
+            2 => self.set_output_pins(0b0110), // A2+B1
+            3 => self.set_output_pins(0b1001), // A1+B2
             _ => {}
         }
     }
@@ -68,12 +66,16 @@ where
 }
 
 #[cfg(test)]
-mod motor_tests {
-    use super::*;
+mod tests {
+    use core::cell::RefCell;
+    use core::convert::Infallible;
+
+    use alloc::rc::Rc;
+    use alloc::vec::Vec;
+
     use embedded_hal::digital::ErrorType;
-    use std::cell::RefCell;
-    use std::convert::Infallible;
-    use std::rc::Rc;
+
+    use super::*;
 
     #[derive(Debug, Default)]
     pub struct MockPin {
@@ -92,7 +94,9 @@ mod motor_tests {
         }
     }
 
-    impl ErrorType for MockPin { type Error = Infallible; }
+    impl ErrorType for MockPin {
+        type Error = Infallible;
+    }
 
     impl OutputPin for MockPin {
         fn set_low(&mut self) -> Result<(), Self::Error> {
@@ -107,40 +111,131 @@ mod motor_tests {
     }
 
     #[test]
-    fn test_four_pin_motor_full_step_sequence_clockwise() {
-        let mock_pin1 = MockPin::new();
-        let mock_pin2 = MockPin::new();
-        let mock_pin3 = MockPin::new();
-        let mock_pin4 = MockPin::new();
-
-        let pins = [mock_pin1, mock_pin2, mock_pin3, mock_pin4];
+    fn test_step_sequence() {
+        let pins = [
+            MockPin::new(),
+            MockPin::new(),
+            MockPin::new(),
+            MockPin::new(),
+        ];
         let pin_inverted = [false, false, false, false];
-
         let mut motor = FourPinMotor::new(pins, pin_inverted);
 
-        let steps = [0, 1, 2, 3, 0, 1, 2, 3];
-
-        for &step_phase in &steps {
-            motor.step(step_phase);
-        }
+        motor.step(0);
+        motor.step(1);
+        motor.step(2);
+        motor.step(3);
 
         let expected_states = [
-            vec![true, false, false, true],
-            vec![false, true, false, true],
-            vec![false, true, true, false],
-            vec![true, false, true, false],
-            vec![true, false, false, true],
-            vec![false, true, false, true],
-            vec![false, true, true, false],
-            vec![true, false, true, false],
+            [true, false, true, false], // 0b0101 - Step 0: A1+B1
+            [true, true, false, false], // 0b0011 - Step 1: A1+A2
+            [false, true, true, false], // 0b0110 - Step 2: A2+B1
+            [true, false, false, true], // 0b1001 - Step 3: A1+B2
         ];
 
-        for i in 0..4 {
+        for (i, pin) in motor.pins.iter().enumerate() {
+            let states = pin.get_states();
             assert_eq!(
-                motor.pins[i].get_states(),
-                expected_states[i],
-                "Pin {} states mismatch",
-                i + 1
+                states.len(),
+                4,
+                "Pin {} should have exactly 4 states, got {}",
+                i,
+                states.len()
+            );
+            for (j, &state) in states.iter().enumerate() {
+                assert_eq!(
+                    state, expected_states[j][i],
+                    "Pin {} at step {}: expected {}, got {}",
+                    i, j, expected_states[j][i], state
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_enable_disable() {
+        let pins = [
+            MockPin::new(),
+            MockPin::new(),
+            MockPin::new(),
+            MockPin::new(),
+        ];
+        let pin_inverted = [false, false, false, false];
+        let mut motor = FourPinMotor::new(pins, pin_inverted);
+
+        motor.enable();
+        for (i, pin) in motor.pins.iter().enumerate() {
+            let states = pin.get_states();
+            assert_eq!(
+                states.len(),
+                1,
+                "Pin {} should have exactly 1 state after enable, got {}",
+                i,
+                states.len()
+            );
+            assert!(states[0], "Pin {} should be high after enable, got low", i);
+        }
+
+        motor.disable();
+        for (i, pin) in motor.pins.iter().enumerate() {
+            let states = pin.get_states();
+            assert_eq!(
+                states.len(),
+                2,
+                "Pin {} should have exactly 2 states after disable, got {}",
+                i,
+                states.len()
+            );
+            assert!(
+                !states[1],
+                "Pin {} should be low after disable, got high",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_inverted_pins() {
+        let pins = [
+            MockPin::new(),
+            MockPin::new(),
+            MockPin::new(),
+            MockPin::new(),
+        ];
+        let pin_inverted = [true, true, true, true];
+        let mut motor = FourPinMotor::new(pins, pin_inverted);
+
+        motor.enable();
+        for (i, pin) in motor.pins.iter().enumerate() {
+            let states = pin.get_states();
+            assert_eq!(
+                states.len(),
+                1,
+                "Pin {} should have exactly 1 state after enable (inverted), got {}",
+                i,
+                states.len()
+            );
+            assert!(
+                !states[0],
+                "Pin {} should be low after enable (inverted), got high",
+                i
+            );
+        }
+
+        motor.disable();
+        for (i, pin) in motor.pins.iter().enumerate() {
+            let states = pin.get_states();
+            assert_eq!(
+                states.len(),
+                2,
+                "Pin {} should have exactly 2 states after disable (inverted), got {}",
+                i,
+                states.len()
+            );
+            assert!(
+                states[1],
+                "Pin {} should be high after disable (inverted), got low",
+                i
             );
         }
     }
