@@ -16,6 +16,7 @@ Cargo.lock
 # IDE
 .idea
 .vscode
+.embuild
 
 # Ignore secure key and configs
 configs/*
