@@ -218,10 +218,6 @@ mod tests {
                 locked: false,
             }
         }
-
-        pub fn get_steps(&self) -> Vec<i64> {
-            self.steps.borrow().clone()
-        }
     }
 
     impl Motor for MockMotor {
