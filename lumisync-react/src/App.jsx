@@ -1,10 +1,13 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material';
-import CssBaseline from '@mui/material/CssBaseline';
-import { Login } from './components';
-import { Box, Typography, Grid, AppBar, Toolbar, IconButton } from '@mui/material';
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import LogoutIcon from '@mui/icons-material/Logout';
-import { LanguageProvider } from './i18n/LanguageContext';
+import { ThemeProvider, createTheme } from '@mui/material';
+import { AppBar, Box, Grid, IconButton, Toolbar, Typography } from '@mui/material';
+import CssBaseline from '@mui/material/CssBaseline';
+import { ApiProvider, useApi, useAuthService } from './api';
+import { TestApi } from './components/TestApi';
+import { Login } from './components/index.js';
+import { Dashboard } from './components/index.js';
+import { LanguageProvider } from './i18n/index.js';
 
 const theme = createTheme({
   palette: {
@@ -27,15 +30,14 @@ const theme = createTheme({
   },
 });
 
-const PrivateRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" />;
-};
-
 const MainLayout = ({ children }) => {
+  const { state } = useApi();
+  const authService = useAuthService();
+
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    window.location.href = '/login';
+    if (authService) {
+      authService.logout();
+    }
   };
 
   return (
@@ -43,11 +45,13 @@ const MainLayout = ({ children }) => {
       <AppBar position="static" color="primary" elevation={0}>
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            ?????
+            Smart Blinds
           </Typography>
-          <IconButton color="inherit" onClick={handleLogout}>
-            <LogoutIcon />
-          </IconButton>
+          {state.auth.token && (
+            <IconButton color="inherit" onClick={handleLogout}>
+              <LogoutIcon />
+            </IconButton>
+          )}
         </Toolbar>
       </AppBar>
       <Box
@@ -63,38 +67,43 @@ const MainLayout = ({ children }) => {
   );
 };
 
+function Page() {
+  const { state } = useApi();
+
+  return (
+    <Router>
+      <MainLayout>
+        <Routes>
+          <Route path="/test" element={<TestApi />} />
+          <Route
+            path="/*"
+            element={
+              <Box>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    {state.auth.token ? <Dashboard /> : null}
+                  </Grid>
+                </Grid>
+              </Box>
+            }
+          />
+        </Routes>
+        {!state.auth.token && <Login />}
+      </MainLayout>
+    </Router>
+  );
+}
+
 function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <LanguageProvider>
-        <Router>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/"
-              element={
-                <PrivateRoute>
-                  <MainLayout>
-                    <Grid container spacing={3}>
-                      <Grid item xs={12}>
-                        {/* */}
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        {/* */}
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        {/* */}
-                      </Grid>
-                    </Grid>
-                  </MainLayout>
-                </PrivateRoute>
-              }
-            />
-          </Routes>
-        </Router>
-      </LanguageProvider>
-    </ThemeProvider>
+    <ApiProvider>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <LanguageProvider>
+          <Page />
+        </LanguageProvider>
+      </ThemeProvider>
+    </ApiProvider>
   );
 }
 

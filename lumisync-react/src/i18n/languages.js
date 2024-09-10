@@ -1,34 +1,60 @@
 export const languages = {
-    en: {
-        login: {
-            title: 'Smart Blinds Control System',
-            login: 'Login',
-            register: 'Register',
-            email: 'Email',
-            password: 'Password',
-            group: 'User Group',
-            loginError: 'Login failed, please check email and password',
-            registerError: 'Registration failed, please check your information',
-        },
-        common: {
-            close: 'Close',
-            logout: 'Logout',
-        }
+  en: {
+    login: {
+      title: 'Smart Blinds Control System',
+      login: 'Login',
+      register: 'Register',
+      email: 'Email',
+      password: 'Password',
+      group: 'User Group',
+      loginError: 'Login failed, please check email and password',
+      registerError: 'Registration failed, please check your information',
     },
-    zh: {
-        login: {
-            title: '智能窗帘控制系统',
-            login: '登录',
-            register: '注册',
-            email: '邮箱',
-            password: '密码',
-            group: '用户组',
-            loginError: '登录失败，请检查邮箱和密码',
-            registerError: '注册失败，请检查输入信息',
-        },
-        common: {
-            close: '关闭',
-            logout: '退出登录',
-        }
+    common: {
+      close: 'Close',
+      logout: 'Logout',
     },
-}; 
+    dashboard: {
+      regions: 'Regions',
+      sensors: 'Sensors',
+      windows: 'Windows',
+      settings: 'Settings',
+      debug: 'Debug',
+      multiSelect: 'Multi-select mode',
+      regionsContent: 'Regions Management',
+      sensorsContent: 'Sensors Monitoring',
+      windowsContent: 'Windows Control',
+      settingsContent: 'System Settings',
+      debugContent: 'Debug Tools',
+    },
+  },
+  zh: {
+    login: {
+      title: '智能窗帘控制系统',
+      login: '登录',
+      register: '注册',
+      email: '邮箱',
+      password: '密码',
+      group: '用户组',
+      loginError: '登录失败，请检查邮箱和密码',
+      registerError: '注册失败，请检查输入信息',
+    },
+    common: {
+      close: '关闭',
+      logout: '退出登录',
+    },
+    dashboard: {
+      regions: '区域管理',
+      sensors: '传感器',
+      windows: '窗户控制',
+      settings: '设置',
+      debug: '调试',
+      multiSelect: '多选模式',
+      regionsContent: '区域管理',
+      sensorsContent: '传感器监控',
+      windowsContent: '窗户控制',
+      settingsContent: '系统设置',
+      debugContent: '调试工具',
+    },
+  },
+};
