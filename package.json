@@ -2,12 +2,13 @@
   "name": "smartblinds",
   "private": true,
   "workspaces": [
+    "lumisync-react",
     "lumisync-web"
   ],
   "scripts": {
-    "run": "npm run dev -w=lumisync-web",
-    "preview": "npm run preview -w=lumisync-web",
-    "build": "npm run build -w=lumisync-web"
+    "dev": "npm run dev -w=lumisync-react",
+    "preview": "npm run preview -w=lumisync-react",
+    "build": "npm run build -w=lumisync-react"
   },
   "repository": {
     "type": "git",

@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "chart.js": "^4.4.2",
+    "chart.js": "^4",
     "date-fns": "^3.6.0"
   },
   "devDependencies": {
