@@ -1,1 +1,30 @@
-*.ipynb linguist-vendored
+# Auto detect
+*                 text=auto
+
+# Source code
+*.css             text diff=css
+*.htm             text diff=html
+*.js              text
+*.rs              text diff=rust
+*.py              text diff=python
+
+# Documentation
+*.ipynb           linguist-vendored
+*.markdown        text diff=markdown
+*.md              text diff=markdown
+*.txt             text
+LICENSE           text
+*README*          text
+
+# Configs
+*.lock            text -diff
+package.json      text eol=lf
+package-lock.json text eol=lf -diff
+*.toml            text diff=toml
+
+# Graphics
+*.gif             binary
+*.ico             binary
+*.jpg             binary
+*.png             binary
+*.webp            binary
