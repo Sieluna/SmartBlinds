@@ -1,27 +1,25 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import CloseIcon from '@mui/icons-material/Close';
-import {
-  Alert,
-  Box,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  IconButton,
-  Tab,
-  Tabs,
-  TextField,
-  Typography,
-} from '@mui/material';
-import { useAuthService } from '../api';
-import { useLanguage } from '../i18n/LanguageContext';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import Divider from '@mui/material/Divider';
+import IconButton from '@mui/material/IconButton';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
+import { useAuthService } from '../../api/index.js';
+import { useLanguage } from '../../i18n/index.js';
+import { useApp } from '../global/app-context.jsx';
 
-export function Login() {
-  const navigate = useNavigate();
+export function Auth() {
   const { t } = useLanguage();
   const authService = useAuthService();
+  const { actions } = useApp();
   const [activeTab, setActiveTab] = useState(0);
   const [formData, setFormData] = useState({
     email: '',
@@ -64,7 +62,7 @@ export function Login() {
           group: formData.group,
         });
       }
-      navigate('/');
+      actions.setComponent('Dashboard');
     } catch (err) {
       console.error('Auth error:', err);
       setError(err.message || (activeTab === 0 ? t('login.loginError') : t('login.registerError')));
@@ -116,30 +114,15 @@ export function Login() {
   );
 
   return (
-    <Dialog
-      open={true}
-      maxWidth="xs"
-      fullWidth
-      slotProps={{
-        paper: {
-          sx: {
-            borderRadius: 2,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-          },
-        },
-      }}
-    >
-      <DialogTitle sx={{ m: 0, p: 2 }}>
+    <Dialog open={true} maxWidth="xs" fullWidth>
+      <DialogTitle>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" component="div">
             {t('login.title')}
           </Typography>
           <IconButton
             aria-label={t('common.close')}
-            onClick={() => navigate('/')}
-            sx={{
-              color: theme => theme.palette.grey[500],
-            }}
+            onClick={() => actions.setComponent('Dashboard')}
           >
             <CloseIcon />
           </IconButton>
@@ -167,7 +150,6 @@ export function Login() {
             sx={{
               mt: 2,
               py: 1.5,
-              borderRadius: 1,
               textTransform: 'none',
               fontSize: '1rem',
             }}
