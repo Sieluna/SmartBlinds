@@ -1,5 +1,5 @@
-use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use super::Table;
 
@@ -35,7 +35,7 @@ impl Table for SettingTable {
                 interval INTEGER NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

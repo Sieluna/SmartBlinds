@@ -4,11 +4,11 @@ use crate::models::region_setting::RegionSettingTable;
 use crate::models::sensor::SensorTable;
 use crate::models::sensor_data::SensorDataTable;
 use crate::models::setting::SettingTable;
-use crate::models::Table;
 use crate::models::user::UserTable;
 use crate::models::user_region::UserRegionTable;
 use crate::models::window::WindowTable;
 use crate::models::window_setting::WindowSettingTable;
+use crate::models::Table;
 
 pub struct SchemaManager {
     tables: Vec<Box<dyn Table>>,
@@ -26,12 +26,17 @@ impl SchemaManager {
         let mut sorted = Vec::with_capacity(to_sort.len());
 
         while !to_sort.is_empty() {
-            let independent_indices: Vec<usize> = deps_list.iter().enumerate()
+            let independent_indices: Vec<usize> = deps_list
+                .iter()
+                .enumerate()
                 .filter(|(_, deps)| deps.is_empty())
                 .map(|(i, _)| i)
                 .collect();
 
-            assert!(!independent_indices.is_empty(), "Circular dependency detected or unresolved dependencies exist.");
+            assert!(
+                !independent_indices.is_empty(),
+                "Circular dependency detected or unresolved dependencies exist."
+            );
 
             for &index in independent_indices.iter().rev() {
                 let table = to_sort.swap_remove(index);
@@ -41,7 +46,9 @@ impl SchemaManager {
 
             for deps in deps_list.iter_mut() {
                 deps.retain(|dep_name| {
-                    !sorted.iter().any(|resolved_table| resolved_table.name() == *dep_name)
+                    !sorted
+                        .iter()
+                        .any(|resolved_table| resolved_table.name() == *dep_name)
                 });
             }
         }
@@ -54,28 +61,30 @@ impl SchemaManager {
     }
 
     pub fn dispose_schema(&self) -> Vec<String> {
-        self.tables.iter().rev().map(|table| table.dispose()).collect()
+        self.tables
+            .iter()
+            .rev()
+            .map(|table| table.dispose())
+            .collect()
     }
 }
 
 impl Default for SchemaManager {
     fn default() -> Self {
-        SchemaManager::new(
-            vec![
-                Box::new(GroupTable),
-                Box::new(UserTable),
-                Box::new(RegionTable),
-                Box::new(SettingTable),
-                Box::new(WindowTable),
-                Box::new(SensorTable),
-                Box::new(SensorDataTable),
-                Box::new(WindowSettingTable),
-                Box::new(RegionSettingTable),
-                // Reference
-                Box::new(UserRegionTable),
-                Box::new(RegionSettingTable),
-            ]
-        )
+        SchemaManager::new(vec![
+            Box::new(GroupTable),
+            Box::new(UserTable),
+            Box::new(RegionTable),
+            Box::new(SettingTable),
+            Box::new(WindowTable),
+            Box::new(SensorTable),
+            Box::new(SensorDataTable),
+            Box::new(WindowSettingTable),
+            Box::new(RegionSettingTable),
+            // Reference
+            Box::new(UserRegionTable),
+            Box::new(RegionSettingTable),
+        ])
     }
 }
 

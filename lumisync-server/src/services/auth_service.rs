@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use argon2::{Argon2, password_hash, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::{rand_core, SaltString};
+use argon2::{password_hash, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 
 use crate::models::user::User;
 
@@ -32,7 +32,11 @@ impl AuthService {
     pub fn verify(&self, user: &User, password: &str) -> Result<bool, password_hash::Error> {
         let parsed_hash = PasswordHash::new(&user.password).unwrap();
 
-        Ok(self.hasher.0.verify_password(password.as_ref(), &parsed_hash).is_ok())
+        Ok(self
+            .hasher
+            .0
+            .verify_password(password.as_ref(), &parsed_hash)
+            .is_ok())
     }
 }
 

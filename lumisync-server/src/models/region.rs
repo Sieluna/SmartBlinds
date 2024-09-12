@@ -31,7 +31,7 @@ impl Table for RegionTable {
                 temperature REAL NOT NULL,
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

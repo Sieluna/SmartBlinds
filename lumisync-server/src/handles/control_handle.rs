@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use axum::response::IntoResponse;
+use axum::Json;
 use serde_json::json;
 
 use crate::services::actuator_service::ActuatorService;
@@ -18,11 +18,14 @@ pub async fn execute_command(
     State(state): State<ControlState>,
 ) -> Result<impl IntoResponse, StatusCode> {
     if let Some(service) = state.actuator_service {
-        service.send(command.as_str())
+        service
+            .send(command.as_str())
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        Ok(Json(json!({ "message": format!("Submit command: {}", command) })))
+        Ok(Json(
+            json!({ "message": format!("Submit command: {}", command) }),
+        ))
     } else {
         Err(StatusCode::NOT_FOUND)
     }

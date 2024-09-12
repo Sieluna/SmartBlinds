@@ -27,7 +27,7 @@ impl Table for WindowSettingTable {
                 FOREIGN KEY (window_id) REFERENCES windows (id) ON DELETE CASCADE,
                 FOREIGN KEY (setting_id) REFERENCES settings (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

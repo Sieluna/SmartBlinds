@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use axum::body::{Body, to_bytes};
+use axum::body::{to_bytes, Body};
 use axum::http;
 use axum::http::{Request, StatusCode};
 use time::OffsetDateTime;
@@ -21,13 +21,14 @@ async fn test_auth_middleware_with_header() {
     let mut app = MockApp::new().await;
     app = app.with_auth_middleware().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .uri("/check")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -46,12 +47,13 @@ async fn test_auth_middleware_with_query() {
     let mut app = MockApp::new().await;
     app = app.with_auth_middleware().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .uri(format!("/check?token={}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -70,13 +72,14 @@ async fn test_auth_middleware_with_bad_token() {
     let mut app = MockApp::new().await;
     app = app.with_auth_middleware().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .uri("/check")
                 .header("Authorization", "Bearer bad_token")
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -95,16 +98,18 @@ async fn test_user_register_router() {
         email: String::from("test@test.com"),
         password: String::from("test"),
         role: String::from("admin"),
-    }).unwrap();
+    })
+    .unwrap();
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::POST)
                 .header("Content-Type", "application/json")
                 .uri("/register")
                 .body(Body::from(req_body))
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -134,16 +139,18 @@ async fn test_user_authenticate_router() {
     let req_body = serde_json::to_string(&UserLoginBody {
         email: user.email,
         password: String::from("test"),
-    }).unwrap();
+    })
+    .unwrap();
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::POST)
                 .uri("/authenticate")
                 .header("Content-Type", "application/json")
                 .body(Body::from(req_body))
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -172,14 +179,15 @@ async fn test_user_authorize_router() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri("/authorize")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -212,9 +220,11 @@ async fn test_region_create_router() {
         name: String::from("Test Room"),
         light: 200,
         temperature: 25.0,
-    }).unwrap();
+    })
+    .unwrap();
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::POST)
@@ -222,7 +232,7 @@ async fn test_region_create_router() {
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::from(req_body))
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -243,14 +253,15 @@ async fn test_region_get_router() {
     app.create_test_user().await;
     let region = app.create_test_region().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri("/region")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -275,9 +286,11 @@ async fn test_window_create_router() {
         region_id: region.id,
         name: String::from("Test Window"),
         state: 0.5,
-    }).unwrap();
+    })
+    .unwrap();
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::POST)
@@ -285,7 +298,7 @@ async fn test_window_create_router() {
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::from(req_body))
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -307,14 +320,15 @@ async fn test_window_get_router() {
     app.create_test_region().await;
     let window = app.create_test_window().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri("/window")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -336,14 +350,15 @@ async fn test_window_get_by_region_router() {
     let region = app.create_test_region().await;
     let window = app.create_test_window().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/window/region/{}", region.id))
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -369,9 +384,11 @@ async fn test_window_update_router() {
         region_id: region.id,
         name: String::from("Test Update Window"),
         state: 0.8,
-    }).unwrap();
+    })
+    .unwrap();
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::PUT)
@@ -379,7 +396,7 @@ async fn test_window_update_router() {
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::from(req_body))
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -401,14 +418,15 @@ async fn test_window_delete_router() {
     app.create_test_region().await;
     let window = app.create_test_window().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::DELETE)
                 .uri(format!("/window/{}", window.id))
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -427,9 +445,11 @@ async fn test_sensor_create_router() {
     let req_body = serde_json::to_string(&SensorBody {
         region_id: 1,
         name: String::from("SENSOR-MOCK"),
-    }).unwrap();
+    })
+    .unwrap();
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::POST)
@@ -437,7 +457,7 @@ async fn test_sensor_create_router() {
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::from(req_body))
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -459,7 +479,8 @@ async fn test_sensor_get_router() {
     app.create_test_region().await;
     let sensor = app.create_test_sensor().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
@@ -467,7 +488,7 @@ async fn test_sensor_get_router() {
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -489,14 +510,15 @@ async fn test_sensor_get_by_region_router() {
     let region = app.create_test_region().await;
     let sensor = app.create_test_sensor().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/sensor/region/{}", region.id))
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -523,9 +545,11 @@ async fn test_setting_create_router() {
         start: OffsetDateTime::now_utc(),
         end: OffsetDateTime::now_utc() + Duration::from_secs(4 * 60 * 60),
         interval: 0,
-    }).unwrap();
+    })
+    .unwrap();
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::POST)
@@ -533,7 +557,7 @@ async fn test_setting_create_router() {
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::from(req_body))
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -556,14 +580,15 @@ async fn test_setting_get_router() {
     app.create_test_region().await;
     let setting = app.create_test_setting().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri("/setting")
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -586,14 +611,15 @@ async fn test_setting_get_by_region_router() {
     let region = app.create_test_region().await;
     let setting = app.create_test_setting().await;
 
-    let response = app.router
+    let response = app
+        .router
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/setting/region/{}", region.id))
                 .header("Authorization", format!("Bearer {}", app.token))
                 .body(Body::empty())
-                .unwrap()
+                .unwrap(),
         )
         .await
         .unwrap();

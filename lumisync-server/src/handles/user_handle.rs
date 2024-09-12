@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use axum::{Extension, Json};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::configs::storage::Storage;
@@ -36,7 +36,9 @@ pub async fn create_user(
     State(state): State<UserState>,
     Json(body): Json<UserRegisterBody>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let hash_password = state.auth_service.hash(&body.password)
+    let hash_password = state
+        .auth_service
+        .hash(&body.password)
         .map_err(|_| StatusCode::FORBIDDEN)?;
 
     let user: User = sqlx::query_as(
@@ -44,17 +46,19 @@ pub async fn create_user(
         INSERT INTO users (group_id, email, password, role)
             VALUES ((SELECT id FROM groups WHERE name = $1), $2, $3, $4)
             RETURNING *;
-        "#
+        "#,
     )
-        .bind(&body.group)
-        .bind(&body.email)
-        .bind(&hash_password)
-        .bind(&body.role)
-        .fetch_one(state.storage.get_pool())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .bind(&body.group)
+    .bind(&body.email)
+    .bind(&hash_password)
+    .bind(&body.role)
+    .fetch_one(state.storage.get_pool())
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let token = state.token_service.generate_token(user.to_owned())
+    let token = state
+        .token_service
+        .generate_token(user.to_owned())
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .token;
 
@@ -65,7 +69,8 @@ pub async fn authorize_user(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<UserState>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let token = state.token_service
+    let token = state
+        .token_service
         .generate_token(token_data)
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .token;
@@ -83,11 +88,15 @@ pub async fn authenticate_user(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let result = state.auth_service.verify(&user, &body.password)
+    let result = state
+        .auth_service
+        .verify(&user, &body.password)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
     if result {
-        let token = state.token_service.generate_token(user.to_owned())
+        let token = state
+            .token_service
+            .generate_token(user.to_owned())
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .token;
 

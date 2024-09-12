@@ -23,7 +23,7 @@ impl Table for GroupTable {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE
             );
-            "#
+            "#,
         )
     }
 

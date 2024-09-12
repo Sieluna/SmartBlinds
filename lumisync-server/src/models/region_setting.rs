@@ -27,7 +27,7 @@ impl Table for RegionSettingTable {
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE,
                 FOREIGN KEY (setting_id) REFERENCES settings (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

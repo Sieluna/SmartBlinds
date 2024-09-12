@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use axum::{Extension, Json};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::configs::storage::Storage;
@@ -34,7 +34,11 @@ pub async fn create_region(
 ) -> Result<impl IntoResponse, StatusCode> {
     match Role::from(token_data.role.clone()) {
         Role::Admin => {
-            let mut tx = state.storage.get_pool().begin().await
+            let mut tx = state
+                .storage
+                .get_pool()
+                .begin()
+                .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             let region: Region = sqlx::query_as(
@@ -42,15 +46,15 @@ pub async fn create_region(
                 INSERT INTO regions (group_id, name, light, temperature)
                     VALUES ($1, $2, $3, $4)
                     RETURNING *;
-                "#
+                "#,
             )
-                .bind(&token_data.group_id)
-                .bind(&body.name)
-                .bind(&body.light)
-                .bind(&body.temperature)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(|_| StatusCode::NOT_FOUND)?;
+            .bind(token_data.group_id)
+            .bind(&body.name)
+            .bind(body.light)
+            .bind(body.temperature)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
             let mut bind_users = vec![token_data.sub];
             bind_users.extend(body.user_ids);
@@ -60,19 +64,21 @@ pub async fn create_region(
                     r#"
                     INSERT INTO users_regions_link (user_id, region_id)
                         VALUES ($1, $2)
-                    "#
+                    "#,
                 )
-                    .bind(&bind_user)
-                    .bind(&region.id)
-                    .execute(&mut *tx)
-                    .await
-                    .map_err(|_| StatusCode::NOT_FOUND)?;
+                .bind(bind_user)
+                .bind(region.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|_| StatusCode::NOT_FOUND)?;
             }
 
-            tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            tx.commit()
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             Ok(Json(region))
-        },
+        }
         Role::User => Err(StatusCode::FORBIDDEN),
     }
 }
@@ -84,13 +90,13 @@ pub async fn get_regions(
     match Role::from(token_data.role.clone()) {
         Role::Admin => {
             let regions: Vec<Region> = sqlx::query_as("SELECT * FROM regions WHERE group_id = $1")
-                .bind(&token_data.group_id)
+                .bind(token_data.group_id)
                 .fetch_all(state.storage.get_pool())
                 .await
                 .map_err(|_| StatusCode::NOT_FOUND)?;
 
             Ok(Json(regions))
-        },
+        }
         Role::User => {
             let regions: Vec<Region> = sqlx::query_as(
                 r#"
@@ -98,14 +104,14 @@ pub async fn get_regions(
                     JOIN users_regions_link ur ON u.id = ur.user_id
                     JOIN regions r ON ur.region_id = r.id
                     WHERE u.id = $1;
-                "#
+                "#,
             )
-                .bind(&token_data.sub)
-                .fetch_all(state.storage.get_pool())
-                .await
-                .map_err(|_| StatusCode::NOT_FOUND)?;
+            .bind(token_data.sub)
+            .fetch_all(state.storage.get_pool())
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
             Ok(Json(regions))
-        },
+        }
     }
 }

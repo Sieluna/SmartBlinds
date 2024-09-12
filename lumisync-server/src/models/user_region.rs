@@ -27,7 +27,7 @@ impl Table for UserRegionTable {
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

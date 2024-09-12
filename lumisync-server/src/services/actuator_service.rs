@@ -21,7 +21,7 @@ impl ActuatorService {
                     .map(|port| port.port_name.clone())
                     .ok_or("No config file found")?;
                 (path, 9600)
-            },
+            }
         };
 
         tracing::debug!("Connect to port: {}", port_path);
@@ -30,7 +30,9 @@ impl ActuatorService {
             .timeout(Duration::from_millis(10))
             .open()?;
 
-        Ok(Self { serial_port: Arc::new(Mutex::new(port)) })
+        Ok(Self {
+            serial_port: Arc::new(Mutex::new(port)),
+        })
     }
 
     pub async fn send(&self, command: &str) -> Result<(), Box<dyn Error>> {

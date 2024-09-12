@@ -1,20 +1,27 @@
 use std::sync::Arc;
 
-use axum::{middleware, Router};
 use axum::routing::{get, post};
+use axum::{middleware, Router};
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 
 use crate::configs::schema::SchemaManager;
 use crate::configs::settings::Settings;
 use crate::configs::storage::Storage;
-use crate::handles::control_handle::{ControlState, execute_command};
+use crate::handles::control_handle::{execute_command, ControlState};
 use crate::handles::region_handle::{create_region, get_regions, RegionState};
-use crate::handles::sensor_handle::{get_sensor_data, get_sensor_data_in_range, get_sensors, get_sensors_by_region, SensorState};
-use crate::handles::setting_handle::{get_settings, get_settings_by_region, create_setting, SettingState};
+use crate::handles::sensor_handle::{
+    get_sensor_data, get_sensor_data_in_range, get_sensors, get_sensors_by_region, SensorState,
+};
+use crate::handles::setting_handle::{
+    create_setting, get_settings, get_settings_by_region, SettingState,
+};
 use crate::handles::sse_handle::{sse_handler, SSEState};
 use crate::handles::user_handle::{authenticate_user, authorize_user, create_user, UserState};
-use crate::handles::window_handle::{create_window, delete_window, get_window_owners, get_windows, get_windows_by_region, update_window, WindowState};
+use crate::handles::window_handle::{
+    create_window, delete_window, get_window_owners, get_windows, get_windows_by_region,
+    update_window, WindowState,
+};
 use crate::middlewares::auth_middleware::{auth, TokenState};
 use crate::services::actuator_service::ActuatorService;
 use crate::services::analyser_service::AnalyserService;
@@ -24,29 +31,42 @@ use crate::services::token_service::TokenService;
 
 pub async fn create_app(settings: &Arc<Settings>) -> Router {
     let (sender, _receiver) = broadcast::channel(100);
-    let storage = Arc::new(Storage::new(settings.database.clone(), SchemaManager::default()).await.unwrap());
+    let storage = Arc::new(
+        Storage::new(settings.database.clone(), SchemaManager::default())
+            .await
+            .unwrap(),
+    );
 
-    let sensor_service = Arc::new(SensorService::new(settings.gateway.clone(), &storage, &sender).await.unwrap());
+    let sensor_service = Arc::new(
+        SensorService::new(settings.gateway.clone(), &storage, &sender)
+            .await
+            .unwrap(),
+    );
     sensor_service.subscribe_all_groups().await.unwrap();
 
     let analyser_service = Arc::new(AnalyserService::new(&storage, &sender).await.unwrap());
     analyser_service.start_listener();
 
-    let actuator_service = ActuatorService::new(settings.embedded.clone()).map(Arc::new).ok();
+    let actuator_service = ActuatorService::new(settings.embedded.clone())
+        .map(Arc::new)
+        .ok();
 
     let auth_service = Arc::new(AuthService::new());
     let token_service = Arc::new(TokenService::new(settings.auth.clone()));
 
     let token_state = TokenState {
         token_service: token_service.clone(),
-        storage: storage.clone()
+        storage: storage.clone(),
     };
 
     let user = Router::new()
         .route("/register", post(create_user))
         .route("/authenticate", post(authenticate_user))
-        .route("/authorize", get(authorize_user)
-            .route_layer(middleware::from_fn_with_state(token_state.clone(), auth)))
+        .route(
+            "/authorize",
+            get(authorize_user)
+                .route_layer(middleware::from_fn_with_state(token_state.clone(), auth)),
+        )
         .with_state(UserState {
             auth_service: auth_service.clone(),
             token_service: token_service.clone(),
@@ -70,7 +90,12 @@ pub async fn create_app(settings: &Arc<Settings>) -> Router {
 
     let windows = Router::new()
         .route("/", get(get_windows).post(create_window))
-        .route("/:window_id", get(get_window_owners).put(update_window).delete(delete_window))
+        .route(
+            "/:window_id",
+            get(get_window_owners)
+                .put(update_window)
+                .delete(delete_window),
+        )
         .route("/region/:region_id", get(get_windows_by_region))
         .route_layer(middleware::from_fn_with_state(token_state.clone(), auth))
         .with_state(WindowState {

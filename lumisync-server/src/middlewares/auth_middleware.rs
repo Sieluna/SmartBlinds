@@ -28,20 +28,20 @@ pub async fn auth(
     mut req: Request<Body>,
     next: Next,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let mut headers = req
-        .headers_mut()
-        .get_all(header::AUTHORIZATION)
-        .iter();
+    let mut headers = req.headers_mut().get_all(header::AUTHORIZATION).iter();
 
-    let token = query.token
-        .or_else(||
+    let token = query
+        .token
+        .or_else(|| {
             Authorization::decode(&mut headers)
-                .and_then(|header| Ok(header.token().to_string()))
+                .map(|header| header.token().to_string())
                 .ok()
-        )
+        })
         .ok_or(StatusCode::BAD_REQUEST)?;
 
-    let token_data = state.token_service.retrieve_token_claims(&token)
+    let token_data = state
+        .token_service
+        .retrieve_token_claims(&token)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     req.extensions_mut().insert(token_data.claims);

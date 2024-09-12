@@ -26,7 +26,7 @@ impl Table for SensorTable {
                 name TEXT NOT NULL UNIQUE,
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

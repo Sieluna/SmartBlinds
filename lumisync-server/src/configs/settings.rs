@@ -1,6 +1,6 @@
-use std::{env, error, fs, io};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::{env, error, fs, io};
 
 use serde::{Deserialize, Serialize};
 use toml::map::Map;
@@ -73,9 +73,11 @@ impl Settings {
         let run_mode = env::var("RUN_MODE").unwrap_or("development".into());
 
         // TODO: Need to be replaced until `CARGO_RUSTC_CURRENT_DIR` is stable
-        let mut settings: Settings = toml::from_str(
-            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", "configs/default.toml"))
-        )?;
+        let mut settings: Settings = toml::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../",
+            "configs/default.toml"
+        )))?;
 
         let settings_path = Self::normalize_path(&format!("configs/{run_mode}.toml"))?;
         if settings_path.exists() {
@@ -84,7 +86,7 @@ impl Settings {
             let merged_settings = Self::merge(
                 Value::try_from(settings.to_owned())?,
                 override_settings,
-                "$"
+                "$",
             )?;
             settings = Value::try_into(merged_settings)?;
         }
@@ -97,14 +99,15 @@ impl Settings {
                 .to_string_lossy()
                 .to_string();
 
-            settings.gateway.auth = Some(GatewayAuth { cert_path, key_path });
+            settings.gateway.auth = Some(GatewayAuth {
+                cert_path,
+                key_path,
+            });
         }
 
         if let Some(migrate) = &settings.database.migration_path {
             if Path::new(migrate).is_dir() {
-                let migrate_path = Self::normalize_path(&migrate)?
-                    .to_string_lossy()
-                    .to_string();
+                let migrate_path = Self::normalize_path(migrate)?.to_string_lossy().to_string();
 
                 settings.database.migration_path = Some(migrate_path);
             } else {
@@ -147,14 +150,13 @@ impl Settings {
                 Self::merge_table(&mut existing, inner, path)?;
                 Ok(Value::Table(existing))
             }
-            (v, o) => Err(
-                format!(
-                    "Incompatible types at path {}, expected {} received {}.",
-                    path,
-                    v.type_str(),
-                    o.type_str()
-                ).into()
-            ),
+            (v, o) => Err(format!(
+                "Incompatible types at path {}, expected {} received {}.",
+                path,
+                v.type_str(),
+                o.type_str()
+            )
+            .into()),
         }
     }
 
@@ -164,9 +166,7 @@ impl Settings {
         Ok(if path_buf.is_absolute() {
             path_buf.clone()
         } else {
-            env::current_dir()?
-                .as_path()
-                .join(&path_buf)
+            env::current_dir()?.as_path().join(&path_buf)
         })
     }
 }

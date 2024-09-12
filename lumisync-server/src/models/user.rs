@@ -14,7 +14,7 @@ impl From<String> for Role {
     fn from(value: String) -> Self {
         match value.as_str() {
             "admin" => Role::Admin,
-            _  => Role::User,
+            _ => Role::User,
         }
     }
 }
@@ -56,7 +56,7 @@ impl Table for UserTable {
                 role TEXT NOT NULL,
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

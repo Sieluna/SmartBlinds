@@ -32,7 +32,7 @@ impl Table for WindowTable {
                 state REAL NOT NULL,
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

@@ -1,12 +1,14 @@
-use std::{error, fs, io};
 use std::sync::Arc;
 use std::time::Duration;
+use std::{error, fs, io};
 
-use time::OffsetDateTime;
-use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS, TlsConfiguration, Transport};
 use rumqttc::tokio_rustls::rustls::{ClientConfig, RootCertStore};
-use rustls_pemfile::{certs, Item, read_one};
+use rumqttc::{
+    AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS, TlsConfiguration, Transport,
+};
+use rustls_pemfile::{certs, read_one, Item};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 
@@ -19,7 +21,7 @@ use crate::models::sensor_data::SensorData;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SensorPayload {
-    #[serde(alias = "sId",alias = "tsmTuid")]
+    #[serde(alias = "sId", alias = "tsmTuid")]
     id: String,
     #[serde(alias = "mTs", alias = "tsmTs")]
     time_stamp: i64,
@@ -38,13 +40,18 @@ pub struct SensorService {
 }
 
 impl SensorService {
-    pub async fn new(gateway: Gateway, storage: &Arc<Storage>, sender: &Sender<ServiceEvent>) -> Result<Self, Box<dyn error::Error>> {
+    pub async fn new(
+        gateway: Gateway,
+        storage: &Arc<Storage>,
+        sender: &Sender<ServiceEvent>,
+    ) -> Result<Self, Box<dyn error::Error>> {
         let mut options = MqttOptions::new(&gateway.client_id, &gateway.host, gateway.port);
         options.set_keep_alive(Duration::from_secs(5));
 
         if let Some(auth) = &gateway.auth {
             let mut root_cert_store = RootCertStore::empty();
-            root_cert_store.add_parsable_certificates(rustls_native_certs::load_native_certs().unwrap());
+            root_cert_store
+                .add_parsable_certificates(rustls_native_certs::load_native_certs().unwrap());
 
             let certs = certs(&mut io::BufReader::new(fs::File::open(&auth.cert_path)?))
                 .map(|result| result.unwrap())
@@ -84,11 +91,13 @@ impl SensorService {
             .await?;
 
         for group in groups {
-            let target = format!("cloudext/{}/{}/{}/{}/#",
-                                 self.topic.prefix_type,
-                                 self.topic.prefix_mode,
-                                 self.topic.prefix_country,
-                                 group.name);
+            let target = format!(
+                "cloudext/{}/{}/{}/{}/#",
+                self.topic.prefix_type,
+                self.topic.prefix_mode,
+                self.topic.prefix_country,
+                group.name
+            );
 
             self.subscribe(&target).await?;
         }
@@ -114,7 +123,8 @@ impl SensorService {
                         Event::Incoming(Packet::Publish(publish)) => {
                             match Self::handle_message(&storage_clone, &publish.payload).await {
                                 Ok(data) => {
-                                    if let Err(e) = sender_clone.send(SensorDataCreate(vec![data])) {
+                                    if let Err(e) = sender_clone.send(SensorDataCreate(vec![data]))
+                                    {
                                         tracing::error!("Error sending event: {}", e);
                                     }
                                 }
@@ -131,7 +141,10 @@ impl SensorService {
         Ok(())
     }
 
-    async fn handle_message(storage: &Arc<Storage>, payload: &[u8]) -> Result<SensorData, Box<dyn error::Error>> {
+    async fn handle_message(
+        storage: &Arc<Storage>,
+        payload: &[u8],
+    ) -> Result<SensorData, Box<dyn error::Error>> {
         if let Ok(payload_str) = String::from_utf8(payload.to_vec()) {
             if let Ok(data) = serde_json::from_str::<SensorPayload>(&payload_str) {
                 tracing::debug!("Receive: {:?}", data);
@@ -141,16 +154,16 @@ impl SensorService {
                     INSERT INTO sensor_data (sensor_id, light, temperature, time)
                         VALUES ((SELECT id from sensors WHERE name = $1), $2, $3, DATETIME($4))
                         RETURNING *;
-                    "#
+                    "#,
                 )
-                    .bind(&data.id)
-                    .bind(&data.light)
-                    .bind(&data.temperature)
-                    .bind(OffsetDateTime::from_unix_timestamp(data.time_stamp).unwrap())
-                    .fetch_one(storage.get_pool())
-                    .await?;
+                .bind(&data.id)
+                .bind(data.light)
+                .bind(data.temperature)
+                .bind(OffsetDateTime::from_unix_timestamp(data.time_stamp).unwrap())
+                .fetch_one(storage.get_pool())
+                .await?;
 
-                return Ok(sensor_data)
+                return Ok(sensor_data);
             }
         }
 

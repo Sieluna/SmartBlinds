@@ -21,10 +21,13 @@ pub struct AnalyserService {
 }
 
 impl AnalyserService {
-    pub async fn new(storage: &Arc<Storage>, sender: &Sender<ServiceEvent>) -> Result<Self, Box<dyn error::Error>>{
+    pub async fn new(
+        storage: &Arc<Storage>,
+        sender: &Sender<ServiceEvent>,
+    ) -> Result<Self, Box<dyn error::Error>> {
         Ok(Self {
             pid_controllers: Arc::new(Mutex::new(HashMap::new())),
-            storage: Arc::clone(&storage),
+            storage: Arc::clone(storage),
             sender: sender.clone(),
         })
     }
@@ -44,12 +47,12 @@ impl AnalyserService {
                             SELECT regions.* FROM sensors
                                 JOIN regions ON sensors.region_id = regions.id
                                 WHERE sensors.id = $1;
-                            "#
+                            "#,
                         )
-                            .bind(&data.sensor_id)
-                            .fetch_one(owned.storage.get_pool())
-                            .await
-                            .unwrap();
+                        .bind(data.sensor_id)
+                        .fetch_one(owned.storage.get_pool())
+                        .await
+                        .unwrap();
 
                         let average_light = (data.light + region.light) / 2;
                         let average_temperature = (data.temperature + region.temperature) / 2.0;
@@ -58,14 +61,14 @@ impl AnalyserService {
                             r#"
                             UPDATE regions SET light = $1, temperature = $2
                                 WHERE id = $3;
-                            "#
+                            "#,
                         )
-                            .bind(&average_light)
-                            .bind(&average_temperature)
-                            .bind(&data.sensor_id)
-                            .execute(owned.storage.get_pool())
-                            .await
-                            .unwrap();
+                        .bind(average_light)
+                        .bind(average_temperature)
+                        .bind(data.sensor_id)
+                        .execute(owned.storage.get_pool())
+                        .await
+                        .unwrap();
 
                         owned
                             .update(region.id, average_light, dt.whole_seconds())
@@ -77,7 +80,12 @@ impl AnalyserService {
         });
     }
 
-    pub async fn update(&self, region_id: i32, light: i32, dt: i64) -> Result<(), Box<dyn error::Error>> {
+    pub async fn update(
+        &self,
+        region_id: i32,
+        light: i32,
+        dt: i64,
+    ) -> Result<(), Box<dyn error::Error>> {
         let mut pid_controllers = self.pid_controllers.lock().await;
 
         if let Some(pid_controller) = pid_controllers.get_mut(&region_id) {
@@ -91,12 +99,12 @@ impl AnalyserService {
                 UPDATE windows SET state = $1
                     WHERE region_id = $2
                     RETURNING *;
-                "#
+                "#,
             )
-                .bind(&new_state)
-                .bind(&region_id)
-                .fetch_all(self.storage.get_pool())
-                .await?;
+            .bind(new_state)
+            .bind(region_id)
+            .fetch_all(self.storage.get_pool())
+            .await?;
 
             let event = ServiceEvent::WindowUpdate(updated_windows);
 

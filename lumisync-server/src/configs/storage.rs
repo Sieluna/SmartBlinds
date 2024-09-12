@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use sqlx::{Error, SqlitePool};
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::{Error, SqlitePool};
 
 use super::schema::SchemaManager;
 use super::settings::Database;
@@ -29,7 +29,11 @@ impl Storage {
         &self.pool
     }
 
-    async fn create_schema(pool: &SqlitePool, schema: &SchemaManager, database: &Database) -> Result<(), Error> {
+    async fn create_schema(
+        pool: &SqlitePool,
+        schema: &SchemaManager,
+        database: &Database,
+    ) -> Result<(), Error> {
         if database.clean_start {
             let dispose_statements = schema.dispose_schema();
             let create_statements = schema.create_schema();
@@ -41,9 +45,7 @@ impl Storage {
                 .await?;
 
             // Recreate all schema
-            sqlx::query(&statements.join("\n"))
-                .execute(pool)
-                .await?;
+            sqlx::query(&statements.join("\n")).execute(pool).await?;
 
             tracing::warn!("perform a clean boot: clean and recreate schema");
         }

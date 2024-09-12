@@ -1,5 +1,5 @@
-use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use super::Table;
 
@@ -31,7 +31,7 @@ impl Table for SensorDataTable {
                 time DATETIME NOT NULL,
                 FOREIGN KEY (sensor_id) REFERENCES sensors (id) ON DELETE CASCADE
             );
-            "#
+            "#,
         )
     }
 

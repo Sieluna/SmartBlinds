@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use jsonwebtoken::{decode, DecodingKey, encode, EncodingKey, Header, TokenData, Validation};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use serde::{Deserialize, Serialize};
 
 use crate::configs::settings::Auth;
@@ -64,17 +64,23 @@ impl TokenService {
         }
     }
 
-    pub fn retrieve_token_claims(&self, token: &str) -> Result<TokenData<TokenClaims>, Box<dyn Error>> {
+    pub fn retrieve_token_claims(
+        &self,
+        token: &str,
+    ) -> Result<TokenData<TokenClaims>, Box<dyn Error>> {
         let data = decode::<TokenClaims>(
             token,
             &DecodingKey::from_secret(self.secret.as_ref()),
-            &Validation::default()
+            &Validation::default(),
         )?;
 
         Ok(data)
     }
 
-    pub fn generate_token<T: Into<TokenPayload>>(&self, payload: T) -> Result<Token, Box<dyn Error>> {
+    pub fn generate_token<T: Into<TokenPayload>>(
+        &self,
+        payload: T,
+    ) -> Result<Token, Box<dyn Error>> {
         let iat = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
@@ -95,11 +101,7 @@ impl TokenService {
 
         let token = encode(&Header::default(), &claims, &encoding_key)?;
 
-        Ok(Token {
-            token,
-            iat,
-            exp,
-        })
+        Ok(Token { token, iat, exp })
     }
 }
 
@@ -123,7 +125,10 @@ mod tests {
 
         let token = token_service.generate_token(user.to_owned()).unwrap();
 
-        let claims = token_service.retrieve_token_claims(&token.token).unwrap().claims;
+        let claims = token_service
+            .retrieve_token_claims(&token.token)
+            .unwrap()
+            .claims;
 
         assert_eq!(claims.sub, user.id);
         assert_eq!(claims.group_id, user.group_id);
