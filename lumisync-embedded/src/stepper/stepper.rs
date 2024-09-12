@@ -15,7 +15,6 @@ pub struct Stepper<M: Motor> {
     acceleration: f32,
     step_interval: u64,
     last_step_time: u64,
-    min_pulse_width: u16,
     direction: Direction,
     step_count: i64,
     initial_step_delay: f32,
@@ -34,7 +33,6 @@ impl<M: Motor> Stepper<M> {
             acceleration: 1.0,
             step_interval: 0,
             last_step_time: 0,
-            min_pulse_width: 1,
             direction: Direction::CounterClockwise,
             step_count: 0,
             initial_step_delay: 0.676 * 2.0f32.sqrt() * 1_000_000.0,
@@ -178,7 +176,7 @@ impl<M: Motor> Stepper<M> {
             return false;
         }
         if current_time - self.last_step_time >= self.step_interval {
-            if self.direction == Direction::CounterClockwise {
+            if self.direction == Direction::Clockwise {
                 self.current_position += 1;
             } else {
                 self.current_position -= 1;
@@ -189,5 +187,88 @@ impl<M: Motor> Stepper<M> {
         } else {
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    struct MockMotor {
+        steps: Rc<RefCell<Vec<i64>>>,
+        locked: bool,
+    }
+
+    impl MockMotor {
+        pub fn new() -> Self {
+            Self {
+                steps: Rc::new(RefCell::new(Vec::new())),
+                locked: false,
+            }
+        }
+
+        pub fn get_steps(&self) -> Vec<i64> {
+            self.steps.borrow().clone()
+        }
+
+        pub fn get_status(&self) -> bool {
+            self.locked
+        }
+    }
+
+    impl Motor for MockMotor {
+        fn step(&mut self, position: i64) {
+            self.steps.borrow_mut().push(position);
+        }
+
+        fn enable(&mut self) {
+            self.locked = false;
+        }
+
+        fn disable(&mut self) {
+            self.locked = true;
+        }
+    }
+
+    #[test]
+    fn test_stepper_move_to() {
+        let mock_motor = MockMotor::new();
+        let mut stepper = Stepper::new(mock_motor);
+
+        stepper.set_max_speed(10.0);
+
+        stepper.move_to(5);
+
+        for step in 1..=5 {
+            let current_time = step * 10_000;
+            stepper.run(current_time);
+        }
+
+        let steps = stepper.motor.get_steps();
+        assert_eq!(steps.len(), 5);
+        assert_eq!(stepper.current_position, 5);
+    }
+
+    #[test]
+    fn test_stepper_move_relative() {
+        let mock_motor = MockMotor::new();
+        let mut stepper = Stepper::new(mock_motor);
+
+        stepper.set_current_position(10);
+        stepper.set_acceleration(2.0);
+        stepper.set_speed(10.0);
+
+        stepper.move_relative(5);
+
+        for step in 1..=5 {
+            let current_time = step * 10_000;
+            stepper.run(current_time);
+        }
+
+        let steps = stepper.motor.get_steps();
+        assert_eq!(steps.len(), 5);
+        assert_eq!(stepper.current_position, 15);
     }
 }
