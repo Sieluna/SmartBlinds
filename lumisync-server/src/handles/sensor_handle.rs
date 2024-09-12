@@ -1,13 +1,13 @@
 use std::convert::Infallible;
 use std::sync::Arc;
-use std::time;
+use std::time::Duration;
 
 use axum::{Extension, Json};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Sse};
 use axum::response::sse::Event;
-use chrono::{DateTime, Duration, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::QueryBuilder;
 use tokio::sync::Mutex;
@@ -28,8 +28,8 @@ pub struct SensorBody {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TimeRangeQuery {
-    pub start: Option<DateTime<Utc>>,
-    pub end: Option<DateTime<Utc>>,
+    pub start: Option<OffsetDateTime>,
+    pub end: Option<OffsetDateTime>,
 }
 
 #[derive(Clone)]
@@ -145,10 +145,10 @@ pub async fn get_sensor_data(
     Query(range): Query<TimeRangeQuery>,
     State(state): State<SensorState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let initial_timestamp = range.start.unwrap_or(Utc::now() - Duration::days(1));
+    let initial_timestamp = range.start.unwrap_or(OffsetDateTime::now_utc() - Duration::from_secs(24 * 60 * 60));
     let last_timestamp = Arc::new(Mutex::new(initial_timestamp));
 
-    let stream = wrappers::IntervalStream::new(interval(time::Duration::from_secs(3)))
+    let stream = wrappers::IntervalStream::new(interval(Duration::from_secs(3)))
         .then(move |_| {
             let id_owned = sensor_id.to_owned();
             let storage_owned = state.storage.to_owned();

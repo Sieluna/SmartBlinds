@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Result};
 
 use serde::{Deserialize, Serialize};
 
-use crate::models::Table;
+use super::Table;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Role {

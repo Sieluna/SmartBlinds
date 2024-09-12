@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error;
 use std::sync::Arc;
 
-use chrono::Utc;
+use time::OffsetDateTime;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 
@@ -37,7 +37,7 @@ impl AnalyserService {
             while let Ok(event) = receiver.recv().await {
                 if let ServiceEvent::SensorDataCreate(sensor_data) = event {
                     for data in sensor_data.iter() {
-                        let dt = Utc::now().time() - data.time.time();
+                        let dt = OffsetDateTime::now_utc().time() - data.time.time();
 
                         let region: Region = sqlx::query_as(
                             r#"
@@ -68,7 +68,7 @@ impl AnalyserService {
                             .unwrap();
 
                         owned
-                            .update(region.id, average_light, dt.num_seconds())
+                            .update(region.id, average_light, dt.whole_seconds())
                             .await
                             .unwrap();
                     }

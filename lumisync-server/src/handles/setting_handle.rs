@@ -4,7 +4,7 @@ use axum::{Extension, Json};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::configs::storage::Storage;
@@ -15,8 +15,8 @@ use crate::services::token_service::TokenClaims;
 pub struct SettingBody {
     pub light: i32,
     pub temperature: f32,
-    pub start: DateTime<Utc>,
-    pub end: DateTime<Utc>,
+    pub start: OffsetDateTime,
+    pub end: OffsetDateTime,
     pub interval: i32,
 }
 

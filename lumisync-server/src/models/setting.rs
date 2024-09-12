@@ -1,7 +1,7 @@
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::models::Table;
+use super::Table;
 
 #[derive(Serialize, Deserialize, sqlx::FromRow)]
 pub struct Setting {
@@ -9,8 +9,8 @@ pub struct Setting {
     pub user_id: i32,
     pub light: i32,
     pub temperature: f32,
-    pub start: DateTime<Utc>,
-    pub end: DateTime<Utc>,
+    pub start: OffsetDateTime,
+    pub end: OffsetDateTime,
     pub interval: i32,
 }
 

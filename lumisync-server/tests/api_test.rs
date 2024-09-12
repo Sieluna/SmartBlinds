@@ -3,7 +3,7 @@ use std::time::Duration;
 use axum::body::{Body, to_bytes};
 use axum::http;
 use axum::http::{Request, StatusCode};
-use chrono::Utc;
+use time::OffsetDateTime;
 use tower::util::ServiceExt;
 
 use lumisync_server::handles::region_handle::RegionBody;
@@ -520,8 +520,8 @@ async fn test_setting_create_router() {
     let req_body = serde_json::to_string(&SettingBody {
         light: 200,
         temperature: 25.0,
-        start: Utc::now(),
-        end: Utc::now() + chrono::Duration::hours(4),
+        start: OffsetDateTime::now_utc(),
+        end: OffsetDateTime::now_utc() + Duration::from_secs(4 * 60 * 60),
         interval: 0,
     }).unwrap();
 

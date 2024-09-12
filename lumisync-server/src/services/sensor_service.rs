@@ -1,7 +1,8 @@
-use std::{error, fs, io, time};
+use std::{error, fs, io};
 use std::sync::Arc;
+use std::time::Duration;
 
-use chrono::DateTime;
+use time::OffsetDateTime;
 use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS, TlsConfiguration, Transport};
 use rumqttc::tokio_rustls::rustls::{ClientConfig, RootCertStore};
 use rustls_pemfile::{certs, Item, read_one};
@@ -39,7 +40,7 @@ pub struct SensorService {
 impl SensorService {
     pub async fn new(gateway: Gateway, storage: &Arc<Storage>, sender: &Sender<ServiceEvent>) -> Result<Self, Box<dyn error::Error>> {
         let mut options = MqttOptions::new(&gateway.client_id, &gateway.host, gateway.port);
-        options.set_keep_alive(time::Duration::from_secs(5));
+        options.set_keep_alive(Duration::from_secs(5));
 
         if let Some(auth) = &gateway.auth {
             let mut root_cert_store = RootCertStore::empty();
@@ -145,7 +146,7 @@ impl SensorService {
                     .bind(&data.id)
                     .bind(&data.light)
                     .bind(&data.temperature)
-                    .bind(DateTime::from_timestamp(data.time_stamp, 0))
+                    .bind(OffsetDateTime::from_unix_timestamp(data.time_stamp).unwrap())
                     .fetch_one(storage.get_pool())
                     .await?;
 

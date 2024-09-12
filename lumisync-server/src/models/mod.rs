@@ -10,8 +10,15 @@ pub mod window;
 pub mod window_setting;
 
 pub trait Table {
+    /// The name of the table
     fn name(&self) -> &'static str;
+
+    /// The SQL statement to create the table
     fn create(&self) -> String;
+
+    /// The SQL statement to dispose the table
     fn dispose(&self) -> String;
+
+    /// The dependencies of the table
     fn dependencies(&self) -> Vec<&'static str>;
 }

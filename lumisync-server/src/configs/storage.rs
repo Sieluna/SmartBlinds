@@ -4,8 +4,8 @@ use sqlx::{Error, SqlitePool};
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqlitePoolOptions;
 
-use crate::configs::schema::SchemaManager;
-use crate::configs::settings::Database;
+use super::schema::SchemaManager;
+use super::settings::Database;
 
 #[derive(Clone)]
 pub struct Storage {

@@ -1,7 +1,7 @@
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::models::Table;
+use super::Table;
 
 #[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct SensorData {
@@ -9,7 +9,7 @@ pub struct SensorData {
     pub sensor_id: i32,
     pub light: i32,
     pub temperature: f32,
-    pub time: DateTime<Utc>,
+    pub time: OffsetDateTime,
 }
 
 #[derive(Clone)]

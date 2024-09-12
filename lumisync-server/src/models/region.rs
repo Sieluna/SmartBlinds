@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::Table;
+use super::Table;
 
 #[derive(Serialize, Deserialize, sqlx::FromRow)]
 pub struct Region {
