@@ -5,26 +5,14 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, RwLock};
 
-use crate::models::sensor_data::SensorData;
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum EventPayload {
-    // Device Data
-    SensorData(SensorData),
-    DeviceStatus {
-        device_id: String,
-        status: String,
+    SensorData {
+        sensor_id: i32,
+        light: i32,
+        temperature: f32,
         timestamp: OffsetDateTime,
     },
-    CommandResult {
-        command_id: String,
-        device_id: String,
-        success: bool,
-        message: String,
-        timestamp: OffsetDateTime,
-    },
-
-    // Environment Data
     WeatherData {
         location: String,
         temperature: f32,
@@ -33,44 +21,46 @@ pub enum EventPayload {
         solar_radiation: f32,
         timestamp: OffsetDateTime,
     },
-    EnvironmentData {
+    RegionData {
         region_id: i32,
-        indoor_temp: f32,
+        indoor_temperature: f32,
         indoor_light: i32,
-        outdoor_temp: f32,
+        outdoor_temperature: f32,
         timestamp: OffsetDateTime,
     },
 
-    // Intelligent Control
-    ControlRecommendation {
+    DeviceStatus {
+        device_id: String,
+        device_type: String,
+        status: String,
+        timestamp: OffsetDateTime,
+    },
+
+    GuideCommand {
         region_id: i32,
-        window_settings: Vec<WindowSetting>,
-        reason: String,
+        state: String,
         confidence: f32,
         timestamp: OffsetDateTime,
     },
-
-    // User Interaction
     UserCommand {
         user_id: i32,
         command: String,
-        target_id: String,
         timestamp: OffsetDateTime,
     },
 
-    // Generic Event
+    CommandResult {
+        command_id: String,
+        device_id: String,
+        success: bool,
+        message: String,
+        timestamp: OffsetDateTime,
+    },
+
     Generic {
         event_type: String,
         data: String,
         timestamp: OffsetDateTime,
     },
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct WindowSetting {
-    pub window_id: i32,
-    pub state: f32,
-    pub priority: u8,
 }
 
 pub struct EventBus {
