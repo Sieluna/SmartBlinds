@@ -30,8 +30,8 @@ impl Table for SettingTable {
                 user_id INTEGER NOT NULL,
                 light INTEGER NOT NULL,
                 temperature REAL NOT NULL,
-                start DATETIME NOT NULL,
-                end DATETIME NOT NULL,
+                start TIMESTAMP NOT NULL,
+                end TIMESTAMP NOT NULL,
                 interval INTEGER NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             );

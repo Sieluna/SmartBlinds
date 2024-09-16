@@ -1,15 +1,15 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use axum::extract::ws::{Message as WsMessage, WebSocket};
-use dashmap::{DashMap, DashSet};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
-use super::event_bus::EventBus;
+use super::event_system::EventBus;
 
 static CLIENT_ID_GENERATOR: AtomicUsize = AtomicUsize::new(0);
 
@@ -41,7 +41,7 @@ pub enum Message {
 pub struct ClientConnection {
     pub client_id: usize,
     pub user_id: Option<i32>,
-    pub subscriptions: DashSet<String>,
+    pub subscriptions: HashSet<String>,
     pub connected_at: OffsetDateTime,
     pub last_activity: OffsetDateTime,
 }
@@ -49,14 +49,14 @@ pub struct ClientConnection {
 #[derive(Clone)]
 pub struct ClientService {
     event_bus: Arc<EventBus>,
-    clients: Arc<DashMap<usize, ClientConnection>>,
+    clients: Arc<RwLock<HashMap<usize, ClientConnection>>>,
 }
 
 impl ClientService {
     pub fn new(event_bus: Arc<EventBus>) -> Self {
         Self {
             event_bus,
-            clients: Arc::new(DashMap::new()),
+            clients: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -65,16 +65,19 @@ impl ClientService {
         let client_id = CLIENT_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         let now = OffsetDateTime::now_utc();
 
-        self.clients.insert(
-            client_id,
-            ClientConnection {
+        {
+            let mut clients = self.clients.write().unwrap();
+            clients.insert(
                 client_id,
-                user_id,
-                subscriptions: DashSet::new(),
-                connected_at: now,
-                last_activity: now,
-            },
-        );
+                ClientConnection {
+                    client_id,
+                    user_id,
+                    subscriptions: HashSet::new(),
+                    connected_at: now,
+                    last_activity: now,
+                },
+            );
+        }
 
         let (mut sender, mut receiver) = ws.split();
         let (tx, mut rx) = mpsc::channel::<Message>(100);
@@ -97,8 +100,12 @@ impl ClientService {
             tokio::spawn(async move {
                 while let Some(Ok(msg)) = receiver.next().await {
                     if let WsMessage::Text(text) = msg {
-                        if let Some(mut client) = manager.clients.get_mut(&client_id) {
-                            client.last_activity = OffsetDateTime::now_utc();
+                        {
+                            if let Ok(mut clients) = manager.clients.write() {
+                                if let Some(client) = clients.get_mut(&client_id) {
+                                    client.last_activity = OffsetDateTime::now_utc();
+                                }
+                            }
                         }
 
                         if let Err(e) = manager.handle_message(&text, client_id, &tx).await {
@@ -112,7 +119,9 @@ impl ClientService {
                     }
                 }
 
-                manager.clients.remove(&client_id);
+                if let Ok(mut clients) = manager.clients.write() {
+                    clients.remove(&client_id);
+                }
             })
         };
 
@@ -142,8 +151,11 @@ impl ClientService {
                         .ok_or("Missing event_type")?
                         .to_owned();
 
-                    if let Some(client) = self.clients.get_mut(&client_id) {
-                        client.subscriptions.insert(event_type.to_string());
+                    {
+                        let mut clients = self.clients.write().unwrap();
+                        if let Some(client) = clients.get_mut(&client_id) {
+                            client.subscriptions.insert(event_type.clone());
+                        }
                     }
 
                     let mut rx = self.event_bus.subscribe(&event_type).await;
@@ -175,8 +187,11 @@ impl ClientService {
                         .and_then(|v| v.as_str())
                         .ok_or("Missing event_type")?;
 
-                    if let Some(client) = self.clients.get_mut(&client_id) {
-                        client.subscriptions.remove(event_type);
+                    {
+                        let mut clients = self.clients.write().unwrap();
+                        if let Some(client) = clients.get_mut(&client_id) {
+                            client.subscriptions.remove(event_type);
+                        }
                     }
 
                     tx.send(Message::Ack {
@@ -214,7 +229,7 @@ impl ClientService {
 
 #[cfg(test)]
 mod tests {
-    use crate::services::event_bus::EventPayload;
+    use crate::services::event_system::EventPayload;
 
     use super::*;
 
@@ -223,16 +238,21 @@ mod tests {
         let bus = Arc::new(EventBus::new());
         let svc = ClientService::new(bus.clone());
         let client_id = 1;
-        svc.clients.insert(
-            client_id,
-            ClientConnection {
+
+        {
+            let mut clients = svc.clients.write().unwrap();
+            clients.insert(
                 client_id,
-                user_id: None,
-                subscriptions: DashSet::new(),
-                connected_at: OffsetDateTime::now_utc(),
-                last_activity: OffsetDateTime::now_utc(),
-            },
-        );
+                ClientConnection {
+                    client_id,
+                    user_id: None,
+                    subscriptions: HashSet::new(),
+                    connected_at: OffsetDateTime::now_utc(),
+                    last_activity: OffsetDateTime::now_utc(),
+                },
+            );
+        }
+
         let (tx, mut rx) = mpsc::channel(10);
         let evt = "test.event";
 
@@ -297,11 +317,11 @@ mod tests {
         if let Message::Ack { result, .. } = rx.recv().await.unwrap() {
             assert_eq!(result["event_type"], evt);
         }
-        assert!(!svc
-            .clients
-            .get(&client_id)
-            .unwrap()
-            .subscriptions
-            .contains(evt));
+
+        {
+            let clients = svc.clients.read().unwrap();
+            let client = clients.get(&client_id).unwrap();
+            assert!(!client.subscriptions.contains(evt));
+        }
     }
 }

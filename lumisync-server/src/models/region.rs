@@ -26,7 +26,7 @@ impl Table for RegionTable {
             CREATE TABLE IF NOT EXISTS regions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 group_id INTEGER NOT NULL,
-                name TEXT NOT NULL UNIQUE,
+                name VARCHAR(255) NOT NULL UNIQUE,
                 light INTEGER NOT NULL,
                 temperature REAL NOT NULL,
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE

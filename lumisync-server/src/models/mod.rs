@@ -1,3 +1,4 @@
+pub mod event;
 pub mod group;
 pub mod region;
 pub mod region_setting;

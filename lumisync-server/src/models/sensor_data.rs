@@ -28,7 +28,7 @@ impl Table for SensorDataTable {
                 sensor_id INTEGER NOT NULL,
                 light INTEGER NOT NULL,
                 temperature REAL NOT NULL,
-                time DATETIME NOT NULL,
+                time TIMESTAMP NOT NULL,
                 FOREIGN KEY (sensor_id) REFERENCES sensors (id) ON DELETE CASCADE
             );
             "#,

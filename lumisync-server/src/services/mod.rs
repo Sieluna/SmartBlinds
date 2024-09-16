@@ -4,6 +4,6 @@ pub mod auth_service;
 pub mod cache_service;
 pub mod client_service;
 pub mod connection_service;
-pub mod event_bus;
+pub mod event_system;
 pub mod sensor_service;
 pub mod token_service;

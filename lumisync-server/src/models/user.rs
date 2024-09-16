@@ -1,31 +1,13 @@
-use std::fmt::{Display, Formatter, Result};
-
 use serde::{Deserialize, Serialize};
 
 use super::Table;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[serde(rename_all = "lowercase")]
 pub enum Role {
     Admin,
+    #[default]
     User,
-}
-
-impl From<String> for Role {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "admin" => Role::Admin,
-            _ => Role::User,
-        }
-    }
-}
-
-impl Display for Role {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        match self {
-            Role::Admin => write!(f, "admin"),
-            Role::User => write!(f, "user"),
-        }
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -34,7 +16,7 @@ pub struct User {
     pub group_id: i32,
     pub email: String,
     pub password: String,
-    pub role: String,
+    pub role: Role,
 }
 
 #[derive(Clone)]
@@ -51,9 +33,9 @@ impl Table for UserTable {
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 group_id INTEGER NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                role TEXT NOT NULL,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                role VARCHAR(20) NOT NULL,
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE
             );
             "#,

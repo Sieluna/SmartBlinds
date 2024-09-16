@@ -23,7 +23,7 @@ impl Table for SensorTable {
             CREATE TABLE IF NOT EXISTS sensors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 region_id INTEGER NOT NULL,
-                name TEXT NOT NULL UNIQUE,
+                name VARCHAR(255) NOT NULL UNIQUE,
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE
             );
             "#,

@@ -28,7 +28,7 @@ impl Table for WindowTable {
             CREATE TABLE IF NOT EXISTS windows (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 region_id INTEGER NOT NULL,
-                name TEXT NOT NULL UNIQUE,
+                name VARCHAR(255) NOT NULL UNIQUE,
                 state REAL NOT NULL,
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE
             );

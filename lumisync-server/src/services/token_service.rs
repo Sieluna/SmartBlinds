@@ -5,7 +5,7 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, 
 use serde::{Deserialize, Serialize};
 
 use crate::configs::settings::Auth;
-use crate::models::user::User;
+use crate::models::user::{Role, User};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
@@ -18,7 +18,7 @@ pub struct Token {
 pub struct TokenClaims {
     pub sub: i32,
     pub group_id: i32,
-    pub role: String,
+    pub role: Role,
     pub iat: u64,
     pub exp: u64,
 }
@@ -27,7 +27,7 @@ pub struct TokenClaims {
 pub struct TokenPayload {
     pub id: i32,
     pub group_id: i32,
-    pub role: String,
+    pub role: Role,
 }
 
 impl From<User> for TokenPayload {
@@ -120,7 +120,7 @@ mod tests {
             group_id: 1,
             email: String::from("test@test.com"),
             password: String::from("test"),
-            role: String::from("test"),
+            role: Default::default(),
         };
 
         let token = token_service.generate_token(user.to_owned()).unwrap();

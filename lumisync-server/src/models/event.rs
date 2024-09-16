@@ -1,34 +1,39 @@
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use super::Table;
 
 #[derive(Serialize, Deserialize, sqlx::FromRow)]
-pub struct Group {
+pub struct Event {
     pub id: i32,
-    pub name: String,
+    pub event_type: String,
+    pub payload: String,
+    pub time: OffsetDateTime,
 }
 
 #[derive(Clone)]
-pub struct GroupTable;
+pub struct EventTable;
 
-impl Table for GroupTable {
+impl Table for EventTable {
     fn name(&self) -> &'static str {
-        "groups"
+        "events"
     }
 
     fn create(&self) -> String {
         String::from(
             r#"
-            CREATE TABLE IF NOT EXISTS groups (
+            CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name VARCHAR(255) NOT NULL UNIQUE
+                event_type VARCHAR(255) NOT NULL,
+                payload TEXT NOT NULL,
+                time TIMESTAMP NOT NULL
             );
             "#,
         )
     }
 
     fn dispose(&self) -> String {
-        String::from("DROP TABLE IF EXISTS groups;")
+        String::from("DROP TABLE IF EXISTS events;")
     }
 
     fn dependencies(&self) -> Vec<&'static str> {

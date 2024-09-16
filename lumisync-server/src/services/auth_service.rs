@@ -60,7 +60,7 @@ mod tests {
             group_id: 0,
             email: String::from("test@test.com"),
             password: hash,
-            role: String::from("test"),
+            role: Default::default(),
         };
 
         let result = auth_service.verify(&user, password).unwrap();
