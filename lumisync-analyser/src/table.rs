@@ -14,8 +14,8 @@ pub struct Table<'a> {
     pub columns: &'a [Vec<f64>],
 }
 
-impl<'a> Table<'a> {
-    pub fn rows<'b>(&'b self) -> impl 'b + Iterator<Item = Vec<f64>> + Clone {
+impl Table<'_> {
+    pub fn rows(&self) -> impl '_ + Iterator<Item = Vec<f64>> + Clone {
         self.row_indices().map(move |i| {
             (0..self.columns.len()).map(|j| self.columns[j][i]).collect()
         })

@@ -26,7 +26,7 @@ use crate::middlewares::auth_middleware::{auth, TokenState};
 use crate::services::actuator_service::ActuatorService;
 use crate::services::analyser_service::AnalyserService;
 use crate::services::auth_service::AuthService;
-use crate::services::sensor_service::SensorService;
+use crate::services::sensor_service_legacy::SensorService;
 use crate::services::token_service::TokenService;
 
 pub async fn create_app(settings: &Arc<Settings>) -> Router {
