@@ -1,13 +1,33 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use super::Table;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Admin,
     #[default]
     User,
+}
+
+impl From<String> for Role {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "admin" => Role::Admin,
+            _ => Role::User,
+        }
+    }
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Role::Admin => write!(f, "admin"),
+            Role::User => write!(f, "user"),
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -16,7 +36,7 @@ pub struct User {
     pub group_id: i32,
     pub email: String,
     pub password: String,
-    pub role: Role,
+    pub role: String,
 }
 
 #[derive(Clone)]

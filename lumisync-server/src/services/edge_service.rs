@@ -98,17 +98,17 @@ impl EdgeDeviceService {
             event_bus,
             storage,
         };
-        
+
         // Start heartbeat check
         service.start_heartbeat_check();
-        
+
         service
     }
-    
+
     /// Handle edge device WebSocket connection
     pub async fn handle_connection(&self, device_id: String, ws: WebSocket) {
         tracing::info!("Edge device {} connected", device_id);
-        
+
         // Update device status
         {
             let mut states = self.device_states.write().await;
@@ -121,26 +121,30 @@ impl EdgeDeviceService {
                 },
             );
         }
-        
+
         // Publish device connection event through event bus
-        let _ = self.event_bus.publish(
-            "device.status",
-            EventPayload::DeviceStatus {
-                device_id: device_id.clone(),
-                device_type: "edge_device".to_string(),
-                status: "connected".to_string(),
-                timestamp: OffsetDateTime::now_utc(),
-            },
-        ).await;
-        
+        let _ = self
+            .event_bus
+            .publish(
+                "device.status",
+                EventPayload::DeviceStatus {
+                    device_id: device_id.clone(),
+                    device_type: "edge_device".to_string(),
+                    status: "connected".to_string(),
+                    timestamp: OffsetDateTime::now_utc(),
+                },
+            )
+            .await;
+
         // Split WebSocket into sender and receiver
         let (mut ws_sender, mut ws_receiver) = ws.split();
-        
+
         // Subscribe to device command events
-        let mut command_receiver = self.event_bus
+        let mut command_receiver = self
+            .event_bus
             .subscribe(&format!("device.command.{}", device_id))
             .await;
-        
+
         // Create forwarding task from event bus to WebSocket
         let forward_task = {
             let device_id = device_id.clone();
@@ -156,21 +160,25 @@ impl EdgeDeviceService {
                                 priority: 1,
                                 timestamp: OffsetDateTime::now_utc(),
                             };
-                            
+
                             // Send to WebSocket
                             if let Ok(json) = serde_json::to_string(&cloud_msg) {
                                 if let Err(e) = ws_sender.send(Message::Text(json)).await {
-                                    tracing::error!("Failed to send message to device {}: {}", device_id, e);
+                                    tracing::error!(
+                                        "Failed to send message to device {}: {}",
+                                        device_id,
+                                        e
+                                    );
                                     break;
                                 }
                             }
-                        },
+                        }
                         _ => continue,
                     }
                 }
             })
         };
-        
+
         // Handle messages received from WebSocket
         while let Some(result) = ws_receiver.next().await {
             match result {
@@ -196,11 +204,11 @@ impl EdgeDeviceService {
                 }
             }
         }
-        
+
         // Handle disconnection
         tracing::info!("Device {} disconnected", device_id);
         forward_task.abort();
-        
+
         // Update device status
         {
             let mut states = self.device_states.write().await;
@@ -208,19 +216,22 @@ impl EdgeDeviceService {
                 state.status = DeviceStatus::Disconnected;
             }
         }
-        
+
         // Publish device disconnection event through event bus
-        let _ = self.event_bus.publish(
-            "device.status",
-            EventPayload::DeviceStatus {
-                device_id,
-                device_type: "edge_device".to_string(),
-                status: "disconnected".to_string(),
-                timestamp: OffsetDateTime::now_utc(),
-            },
-        ).await;
+        let _ = self
+            .event_bus
+            .publish(
+                "device.status",
+                EventPayload::DeviceStatus {
+                    device_id,
+                    device_type: "edge_device".to_string(),
+                    status: "disconnected".to_string(),
+                    timestamp: OffsetDateTime::now_utc(),
+                },
+            )
+            .await;
     }
-    
+
     /// Handle device messages
     async fn handle_device_message(&self, device_id: &str, msg: DeviceMessage) {
         match msg {
@@ -258,20 +269,25 @@ impl EdgeDeviceService {
                         .await
                         {
                             Ok(data) => {
-                                let _ = self.event_bus.publish(
-                                    &format!("sensor.data.{}", sensor_id),
-                                    EventPayload::SensorData {
-                                        sensor_id: sensor_id.parse::<i32>().unwrap_or(0),
-                                        light: data.light,
-                                        temperature: data.temperature,
-                                        timestamp: data.time,
-                                    },
-                                ).await;
-                            },
+                                let _ = self
+                                    .event_bus
+                                    .publish(
+                                        &format!("sensor.data.{}", sensor_id),
+                                        EventPayload::SensorData {
+                                            sensor_id: sensor_id.parse::<i32>().unwrap_or(0),
+                                            light: data.light,
+                                            temperature: data.temperature,
+                                            timestamp: data.time,
+                                        },
+                                    )
+                                    .await;
+                            }
                             Err(e) => tracing::error!("Failed to get sensor data: {}", e),
                         }
-                    },
-                    Err(e) => tracing::error!("Failed to save data for sensor {}: {}", sensor_id, e),
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to save data for sensor {}: {}", sensor_id, e)
+                    }
                 }
             }
             DeviceMessage::Heartbeat { timestamp, .. } => {
@@ -283,9 +299,7 @@ impl EdgeDeviceService {
                 }
             }
             DeviceMessage::Status {
-                status,
-                timestamp,
-                ..
+                status, timestamp, ..
             } => {
                 // Update device status
                 {
@@ -299,17 +313,20 @@ impl EdgeDeviceService {
                         };
                     }
                 }
-                
+
                 // Publish device status event
-                let _ = self.event_bus.publish(
-                    "device.status",
-                    EventPayload::DeviceStatus {
-                        device_id: device_id.to_string(),
-                        device_type: "edge_device".to_string(),
-                        status,
-                        timestamp,
-                    },
-                ).await;
+                let _ = self
+                    .event_bus
+                    .publish(
+                        "device.status",
+                        EventPayload::DeviceStatus {
+                            device_id: device_id.to_string(),
+                            device_type: "edge_device".to_string(),
+                            status,
+                            timestamp,
+                        },
+                    )
+                    .await;
             }
             DeviceMessage::CommandResult {
                 command_id,
@@ -319,20 +336,23 @@ impl EdgeDeviceService {
                 ..
             } => {
                 // Publish command result event
-                let _ = self.event_bus.publish(
-                    &format!("command.result.{}", command_id),
-                    EventPayload::CommandResult {
-                        command_id,
-                        device_id: device_id.to_string(),
-                        success: result,
-                        message,
-                        timestamp,
-                    },
-                ).await;
+                let _ = self
+                    .event_bus
+                    .publish(
+                        &format!("command.result.{}", command_id),
+                        EventPayload::CommandResult {
+                            command_id,
+                            device_id: device_id.to_string(),
+                            success: result,
+                            message,
+                            timestamp,
+                        },
+                    )
+                    .await;
             }
         }
     }
-    
+
     /// Send command to device
     pub async fn send_command(
         &self,
@@ -343,78 +363,90 @@ impl EdgeDeviceService {
         // Check if device is online
         let is_device_online = {
             let states = self.device_states.read().await;
-            matches!(states.get(device_id).map(|s| &s.status), Some(DeviceStatus::Connected))
+            matches!(
+                states.get(device_id).map(|s| &s.status),
+                Some(DeviceStatus::Connected)
+            )
         };
-        
+
         if !is_device_online {
             return Err("Device not connected".into());
         }
-        
+
         // Generate command ID
         let command_id = Uuid::new_v4().to_string();
-        
+
         // Subscribe to command result event
-        let mut result_receiver = self.event_bus
+        let mut result_receiver = self
+            .event_bus
             .subscribe(&format!("command.result.{}", command_id))
             .await;
-        
+
         // Publish command event
-        let _ = self.event_bus.publish(
-            &format!("device.command.{}", device_id),
-            EventPayload::UserCommand {
-                user_id: 0, // System command
-                command: command.to_string(),
-                timestamp: OffsetDateTime::now_utc(),
-            },
-        ).await;
-        
+        let _ = self
+            .event_bus
+            .publish(
+                &format!("device.command.{}", device_id),
+                EventPayload::UserCommand {
+                    user_id: 0, // System command
+                    command: command.to_string(),
+                    timestamp: OffsetDateTime::now_utc(),
+                },
+            )
+            .await;
+
         // Wait for command result
         match tokio::time::timeout(Duration::from_secs(5), result_receiver.recv()).await {
-            Ok(Ok(EventPayload::CommandResult { command_id, device_id, success, message, timestamp })) => {
-                Ok(CommandResult {
-                    command_id,
-                    device_id,
-                    success,
-                    message,
-                    timestamp,
-                })
-            }
+            Ok(Ok(EventPayload::CommandResult {
+                command_id,
+                device_id,
+                success,
+                message,
+                timestamp,
+            })) => Ok(CommandResult {
+                command_id,
+                device_id,
+                success,
+                message,
+                timestamp,
+            }),
             _ => Err("Command timed out or device did not respond".into()),
         }
     }
-    
+
     /// Get device status
     pub async fn get_device_status(&self, device_id: &str) -> Option<DeviceStatus> {
         let states = self.device_states.read().await;
         states.get(device_id).map(|state| state.status.clone())
     }
-    
+
     /// Get all device statuses
     pub async fn get_all_device_status(&self) -> HashMap<String, DeviceStatus> {
         let states = self.device_states.read().await;
-        states.iter()
+        states
+            .iter()
             .map(|(id, state)| (id.clone(), state.status.clone()))
             .collect()
     }
-    
+
     /// Start heartbeat check
     fn start_heartbeat_check(&self) {
         const MAX_RETRIES: u32 = 3;
         let device_states = self.device_states.clone();
         let event_bus = self.event_bus.clone();
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 // Get all device IDs
                 let device_ids = {
                     let states = device_states.read().await;
                     states.keys().cloned().collect::<Vec<_>>()
                 };
-                
+
                 for device_id in device_ids {
                     // Check device status
                     let mut should_remove = false;
@@ -423,51 +455,59 @@ impl EdgeDeviceService {
                         if let Some(state) = states.get_mut(&device_id) {
                             let now = OffsetDateTime::now_utc();
                             let duration = now - state.last_heartbeat;
-                            
+
                             if duration > time::Duration::hours(2) {
                                 state.status = DeviceStatus::Disconnected;
                                 state.retry_count += 1;
-                                
+
                                 if state.retry_count > MAX_RETRIES {
                                     should_remove = true;
                                 }
                             }
                         }
                     }
-                    
+
                     // Publish heartbeat request event
                     if !should_remove {
                         let heartbeat_payload = CloudMessage::HeartbeatRequest {
                             timestamp: OffsetDateTime::now_utc(),
                         };
-                        
+
                         if let Ok(json) = serde_json::to_string(&heartbeat_payload) {
-                            let _ = event_bus.publish(
-                                &format!("device.command.{}", device_id),
-                                EventPayload::Generic {
-                                    event_type: "heartbeat_request".to_string(),
-                                    data: json,
-                                    timestamp: OffsetDateTime::now_utc(),
-                                },
-                            ).await;
+                            let _ = event_bus
+                                .publish(
+                                    &format!("device.command.{}", device_id),
+                                    EventPayload::Generic {
+                                        event_type: "heartbeat_request".to_string(),
+                                        data: json,
+                                        timestamp: OffsetDateTime::now_utc(),
+                                    },
+                                )
+                                .await;
                         }
                     } else {
                         // Remove device
                         let mut states = device_states.write().await;
                         states.remove(&device_id);
-                        
+
                         // Publish device removal event
-                        let _ = event_bus.publish(
-                            "device.status",
-                            EventPayload::DeviceStatus {
-                                device_id: device_id.clone(),
-                                device_type: "edge_device".to_string(),
-                                status: "removed".to_string(),
-                                timestamp: OffsetDateTime::now_utc(),
-                            },
-                        ).await;
-                        
-                        tracing::warn!("Device {} removed after {} retries", device_id, MAX_RETRIES);
+                        let _ = event_bus
+                            .publish(
+                                "device.status",
+                                EventPayload::DeviceStatus {
+                                    device_id: device_id.clone(),
+                                    device_type: "edge_device".to_string(),
+                                    status: "removed".to_string(),
+                                    timestamp: OffsetDateTime::now_utc(),
+                                },
+                            )
+                            .await;
+
+                        tracing::warn!(
+                            "Device {} removed after {} retries",
+                            device_id,
+                            MAX_RETRIES
+                        );
                     }
                 }
             }

@@ -24,7 +24,7 @@ use lumisync_server::models::group::Group;
 use lumisync_server::models::region::Region;
 use lumisync_server::models::sensor::Sensor;
 use lumisync_server::models::setting::Setting;
-use lumisync_server::models::user::User;
+use lumisync_server::models::user::{Role, User};
 use lumisync_server::models::window::Window;
 use lumisync_server::services::auth_service::AuthService;
 use lumisync_server::services::token_service::{TokenClaims, TokenService};
@@ -64,7 +64,7 @@ impl MockApp {
             group_id: 1,
             email: String::from("test@test.com"),
             password: String::from("test"),
-            role: String::from("admin"),
+            role: Role::Admin.to_string(),
         };
 
         let token_data = token_service.generate_token(user.to_owned()).unwrap();
@@ -85,7 +85,7 @@ impl MockApp {
                 .route(
                     "/check",
                     get(|Extension(token_data): Extension<TokenClaims>| async move {
-                        format!("{:?}", token_data)
+                        serde_json::to_string(&token_data).unwrap()
                     }),
                 )
                 .route_layer(middleware::from_fn_with_state(

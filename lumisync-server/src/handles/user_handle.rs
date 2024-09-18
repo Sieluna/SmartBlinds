@@ -7,7 +7,7 @@ use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::configs::storage::Storage;
-use crate::models::user::User;
+use crate::models::user::{Role, User};
 use crate::services::auth_service::AuthService;
 use crate::services::token_service::{TokenClaims, TokenService};
 
@@ -16,7 +16,6 @@ pub struct UserRegisterBody {
     pub group: String,
     pub email: String,
     pub password: String,
-    pub role: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -51,7 +50,7 @@ pub async fn create_user(
     .bind(&body.group)
     .bind(&body.email)
     .bind(&hash_password)
-    .bind(&body.role)
+    .bind(Role::User.to_string())
     .fetch_one(state.storage.get_pool())
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

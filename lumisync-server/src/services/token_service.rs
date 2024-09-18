@@ -35,7 +35,7 @@ impl From<User> for TokenPayload {
         TokenPayload {
             id: user.id,
             group_id: user.group_id,
-            role: user.role,
+            role: user.role.into(),
         }
     }
 }
@@ -120,7 +120,7 @@ mod tests {
             group_id: 1,
             email: String::from("test@test.com"),
             password: String::from("test"),
-            role: Default::default(),
+            role: Role::User.to_string(),
         };
 
         let token = token_service.generate_token(user.to_owned()).unwrap();
@@ -132,6 +132,6 @@ mod tests {
 
         assert_eq!(claims.sub, user.id);
         assert_eq!(claims.group_id, user.group_id);
-        assert_eq!(claims.role, user.role);
+        assert_eq!(claims.role, user.role.into());
     }
 }

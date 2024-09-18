@@ -11,6 +11,7 @@ use lumisync_server::handles::sensor_handle::SensorBody;
 use lumisync_server::handles::setting_handle::SettingBody;
 use lumisync_server::handles::user_handle::{UserLoginBody, UserRegisterBody};
 use lumisync_server::handles::window_handle::WindowBody;
+use lumisync_server::models::user::Role;
 
 use crate::common::mock_app::MockApp;
 
@@ -97,7 +98,6 @@ async fn test_user_register_router() {
         group: group.name,
         email: String::from("test@test.com"),
         password: String::from("test"),
-        role: String::from("admin"),
     })
     .unwrap();
 
@@ -126,7 +126,7 @@ async fn test_user_register_router() {
 
     assert_eq!(claims.sub, 1);
     assert_eq!(claims.group_id, group.id);
-    assert_eq!(claims.role, "admin");
+    assert_eq!(claims.role, Role::User);
 }
 
 #[tokio::test]
@@ -167,7 +167,7 @@ async fn test_user_authenticate_router() {
 
     assert_eq!(claims.sub, user.id);
     assert_eq!(claims.group_id, group.id);
-    assert_eq!(claims.role, user.role);
+    assert_eq!(claims.role, user.role.into());
 }
 
 #[tokio::test]
@@ -204,7 +204,7 @@ async fn test_user_authorize_router() {
 
     assert_eq!(claims.sub, user.id);
     assert_eq!(claims.group_id, group.id);
-    assert_eq!(claims.role, user.role);
+    assert_eq!(claims.role, user.role.into());
     assert_ne!(res_body_str, app.token);
 }
 
