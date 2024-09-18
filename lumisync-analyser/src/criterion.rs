@@ -15,8 +15,8 @@ pub trait Criterion: Send + Sync + Clone {
     }
 
     fn calculate<T>(&self, xs: T) -> f64
-        where
-            T: Iterator<Item = f64> + Clone;
+    where
+        T: Iterator<Item = f64> + Clone;
 }
 
 #[derive(Debug, Clone)]
@@ -26,8 +26,8 @@ impl Criterion for Mse {
     const CRITERION_TYPE: CriterionType = CriterionType::Regression;
 
     fn calculate<T>(&self, ys: T) -> f64
-        where
-            T: Iterator<Item = f64> + Clone,
+    where
+        T: Iterator<Item = f64> + Clone,
     {
         let n = ys.clone().count() as f64;
         let m = mean(ys.clone());
@@ -42,8 +42,8 @@ impl Criterion for Gini {
     const CRITERION_TYPE: CriterionType = CriterionType::Classification;
 
     fn calculate<T>(&self, ys: T) -> f64
-        where
-            T: Iterator<Item = f64> + Clone,
+    where
+        T: Iterator<Item = f64> + Clone,
     {
         let (histogram, n) = histogram(ys);
         1.0 - histogram
@@ -60,8 +60,8 @@ impl Criterion for Entropy {
     const CRITERION_TYPE: CriterionType = CriterionType::Classification;
 
     fn calculate<T>(&self, ys: T) -> f64
-        where
-            T: Iterator<Item = f64> + Clone,
+    where
+        T: Iterator<Item = f64> + Clone,
     {
         let (histogram, n) = histogram(ys);
         histogram
@@ -80,20 +80,35 @@ mod tests {
 
     #[test]
     fn test_mse() {
-        assert_eq!(Mse.calculate([50.0, 60.0, 70.0, 70.0, 100.0].iter().copied()), 280.0);
+        assert_eq!(
+            Mse.calculate([50.0, 60.0, 70.0, 70.0, 100.0].iter().copied()),
+            280.0
+        );
     }
 
     #[test]
     fn test_gini() {
-        assert_eq!(Gini.calculate([0.0, 1.0, 0.0, 1.0, 1.0, 0.0].iter().copied()), 0.5);
-        assert_eq!(Gini.calculate([0.0, 0.0, 0.0, 0.0, 0.0, 0.0].iter().copied()), 0.0);
-        assert_eq!(Gini.calculate([0.0, 1.0, 0.0, 0.0, 0.0, 0.0].iter().copied()), 0.2777777777777777);
+        assert_eq!(
+            Gini.calculate([0.0, 1.0, 0.0, 1.0, 1.0, 0.0].iter().copied()),
+            0.5
+        );
+        assert_eq!(
+            Gini.calculate([0.0, 0.0, 0.0, 0.0, 0.0, 0.0].iter().copied()),
+            0.0
+        );
+        assert_eq!(
+            Gini.calculate([0.0, 1.0, 0.0, 0.0, 0.0, 0.0].iter().copied()),
+            0.2777777777777777
+        );
     }
 
     #[test]
     fn test_entropy() {
         assert_eq!(Entropy.calculate([0.0, 1.0, 0.0, 1.0].iter().copied()), 1.0);
         assert_eq!(Entropy.calculate([0.0, 0.0, 0.0, 0.0].iter().copied()), 0.0);
-        assert_eq!(Entropy.calculate([0.0, 1.0, 0.0, 0.0].iter().copied()), 0.8112781244591328);
+        assert_eq!(
+            Entropy.calculate([0.0, 1.0, 0.0, 0.0].iter().copied()),
+            0.8112781244591328
+        );
     }
 }

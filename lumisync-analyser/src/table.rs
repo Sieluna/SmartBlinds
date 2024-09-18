@@ -17,13 +17,15 @@ pub struct Table<'a> {
 impl Table<'_> {
     pub fn rows(&self) -> impl '_ + Iterator<Item = Vec<f64>> + Clone {
         self.row_indices().map(move |i| {
-            (0..self.columns.len()).map(|j| self.columns[j][i]).collect()
+            (0..self.columns.len())
+                .map(|j| self.columns[j][i])
+                .collect()
         })
     }
 
     pub fn filter<F>(&mut self, f: F) -> usize
-        where
-            F: Fn(&[f64]) -> bool,
+    where
+        F: Fn(&[f64]) -> bool,
     {
         let mut n = 0;
         let mut i = self.row_range.start;
@@ -63,8 +65,9 @@ impl Table<'_> {
         self.column(self.columns.len() - 1)
     }
 
-    pub fn column<'b>(&'b self, column_index: usize, ) -> impl 'b + Iterator<Item = f64> + Clone {
-        self.row_indices().map(move |i| self.columns[column_index][i])
+    pub fn column<'b>(&'b self, column_index: usize) -> impl 'b + Iterator<Item = f64> + Clone {
+        self.row_indices()
+            .map(move |i| self.columns[column_index][i])
     }
 
     pub fn features_len(&self) -> usize {
@@ -76,7 +79,9 @@ impl Table<'_> {
     }
 
     fn row_indices<'b>(&'b self) -> impl 'b + Iterator<Item = usize> + Clone {
-        self.row_index[self.row_range.start..self.row_range.end].iter().copied()
+        self.row_index[self.row_range.start..self.row_range.end]
+            .iter()
+            .copied()
     }
 
     pub fn sort_rows_by_column(&mut self, column: usize) {
@@ -85,16 +90,15 @@ impl Table<'_> {
             .sort_by_key(|&x| OrderedFloat(columns[column][x]))
     }
 
-    pub fn bootstrap_sample<R: Rng + ?Sized>(
-        &self,
-        rng: &mut R,
-        max_samples: usize,
-    ) -> Self {
+    pub fn bootstrap_sample<R: Rng + ?Sized>(&self, rng: &mut R, max_samples: usize) -> Self {
         let samples = std::cmp::min(max_samples, self.rows_len());
         let row_index = (0..samples)
             .map(|_| self.row_index[rng.gen_range(self.row_range.start..self.row_range.end)])
             .collect::<Vec<_>>();
-        let row_range = Range { start: 0, end: samples };
+        let row_range = Range {
+            start: 0,
+            end: samples,
+        };
 
         Self {
             row_index,
@@ -130,8 +134,8 @@ impl Table<'_> {
     }
 
     pub fn with_split<F, T>(&mut self, row: usize, mut f: F) -> (T, T)
-        where
-            F: FnMut(&mut Self) -> T,
+    where
+        F: FnMut(&mut Self) -> T,
     {
         let row = row + self.row_range.start;
         let original = self.row_range.clone();
@@ -173,7 +177,8 @@ impl TableBuilder {
             Err(TableError::NonFiniteTarget)?
         }
 
-        let column_data = self.columns
+        let column_data = self
+            .columns
             .iter_mut()
             .zip(features.iter().copied().chain(once(target)));
 
@@ -222,7 +227,10 @@ impl TableBuilder {
 
         Ok(Table {
             row_index: (0..rows_len).collect(),
-            row_range: Range { start: 0, end: rows_len, },
+            row_range: Range {
+                start: 0,
+                end: rows_len,
+            },
             columns: &self.columns,
         })
     }

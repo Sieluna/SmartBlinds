@@ -1,12 +1,12 @@
 use std::io::{self, Error, ErrorKind, Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use rand::Rng;
 use rand::seq::SliceRandom;
+use rand::Rng;
 
-use crate::{mean, most_frequent};
 use crate::criterion::{Criterion, CriterionType};
 use crate::table::Table;
+use crate::{mean, most_frequent};
 
 #[derive(Debug)]
 pub struct SplitPoint {
@@ -50,7 +50,7 @@ impl Node {
                 } else {
                     right.predict(xs)
                 }
-            },
+            }
         }
     }
 
@@ -59,13 +59,13 @@ impl Node {
             Node::Leaf(value) => {
                 writer.write_u8(0)?;
                 writer.write_f64::<BigEndian>(*value)?;
-            },
+            }
             Node::Children { left, right, split } => {
                 writer.write_u8(1)?;
                 split.serialize(writer)?;
                 left.serialize(writer)?;
                 right.serialize(writer)?;
-            },
+            }
         }
 
         Ok(())
@@ -80,8 +80,11 @@ impl Node {
                 let right = Box::new(Node::deserialize(reader)?);
 
                 Ok(Node::Children { split, left, right })
-            },
-            v => Err(Error::new(ErrorKind::InvalidData, format!("unknown node type {}", v))),
+            }
+            v => Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("unknown node type {}", v),
+            )),
         }
     }
 }
@@ -114,7 +117,10 @@ impl<R: Rng, T: Criterion> NodeBuilder<R, T> {
             table.sort_rows_by_column(column);
             for (left_row, value) in table.split_points(column) {
                 let rows_l = table.target().take(left_row.end).skip(left_row.start);
-                let rows_r = table.target().take(left_row.start).chain(table.target().skip(left_row.end));
+                let rows_r = table
+                    .target()
+                    .take(left_row.start)
+                    .chain(table.target().skip(left_row.end));
                 let impurity_l = self.criterion.calculate(rows_l);
                 let impurity_r = self.criterion.calculate(rows_r);
                 let ratio_l = (left_row.end - left_row.start) as f64 / table.rows_len() as f64;
@@ -130,10 +136,12 @@ impl<R: Rng, T: Criterion> NodeBuilder<R, T> {
 
         if let Some(split) = best_split {
             table.sort_rows_by_column(split.column);
-            let split_row = table.column(split.column).take_while(|&f| f <= split.value).count();
-            let (left, right) = table.with_split(split_row, |table| {
-                Box::new(self.build(table, depth + 1))
-            });
+            let split_row = table
+                .column(split.column)
+                .take_while(|&f| f <= split.value)
+                .count();
+            let (left, right) =
+                table.with_split(split_row, |table| Box::new(self.build(table, depth + 1)));
 
             Node::Children { split, left, right }
         } else {

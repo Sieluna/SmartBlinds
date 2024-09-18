@@ -50,7 +50,13 @@ mod tests {
         actual_value = 9.0; // Reduced error of 1
         let control = pid.update(actual_value, dt);
 
-        assert!(pid.integral > 0.0, "Integral should accumulate error over time");
-        assert!(control > 0.0, "Control output should be positive after multiple updates");
+        assert!(
+            pid.integral > 0.0,
+            "Integral should accumulate error over time"
+        );
+        assert!(
+            control > 0.0,
+            "Control output should be positive after multiple updates"
+        );
     }
 }

@@ -57,7 +57,9 @@ impl DecisionTree {
     }
 
     pub fn deserialize<R: Read>(reader: &mut R) -> io::Result<Self> {
-        Ok(Self { root: Node::deserialize(reader)? })
+        Ok(Self {
+            root: Node::deserialize(reader)?,
+        })
     }
 }
 
@@ -83,9 +85,12 @@ mod tests {
 
         let regressor = DecisionTree::fit(&mut rand::thread_rng(), Mse, table, Default::default());
         assert_eq!(
-            regressor.predict(&[
-                0.00632, 18.0, 2.31, 0.0, 0.538, 6.575, 65.2, 4.09, 1.0, 296.0, 15.3, 396.9, 4.98
-            ][..]),
+            regressor.predict(
+                &[
+                    0.00632, 18.0, 2.31, 0.0, 0.538, 6.575, 65.2, 4.09, 1.0, 296.0, 15.3, 396.9,
+                    4.98
+                ][..]
+            ),
             24.0
         );
 

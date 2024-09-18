@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         parallel: true,
         ..Default::default()
     }
-        .fit(Mse, table);
+    .fit(Mse, table);
 
     let mut bytes = Vec::new();
     regressor.serialize(&mut bytes)?;

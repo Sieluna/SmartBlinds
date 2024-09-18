@@ -2,14 +2,14 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::num::NonZeroUsize;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use rand::{random, Rng, SeedableRng};
 use rand::rngs::StdRng;
+use rand::{random, Rng, SeedableRng};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{mean, most_frequent};
 use crate::criterion::Criterion;
 use crate::decision_tree::{DecisionTree, DecisionTreeOptions};
 use crate::table::Table;
+use crate::{mean, most_frequent};
 
 #[derive(Debug, Clone, Default)]
 #[repr(u16)]
@@ -50,10 +50,7 @@ impl RandomForest {
         }
     }
 
-    pub fn predict_individuals<'a>(
-        &'a self,
-        xs: &'a [f64],
-    ) -> impl 'a + Iterator<Item=f64> {
+    pub fn predict_individuals<'a>(&'a self, xs: &'a [f64]) -> impl 'a + Iterator<Item = f64> {
         self.forest.iter().map(move |tree| tree.predict(xs))
     }
 
@@ -92,11 +89,7 @@ pub struct RandomForestBuilder {
 }
 
 impl RandomForestBuilder {
-    pub fn fit<T: Criterion>(
-        &self,
-        criterion: T,
-        table: Table,
-    ) -> RandomForest {
+    pub fn fit<T: Criterion>(&self, criterion: T, table: Table) -> RandomForest {
         let forest = if self.parallel {
             self.tree_rngs()
                 .collect::<Vec<_>>()
@@ -124,13 +117,18 @@ impl RandomForestBuilder {
         let max_features = self.decide_max_features(table);
         let max_samples = self.max_samples.map_or(table.rows_len(), |n| n.get());
         let table = table.bootstrap_sample(rng, max_samples);
-        DecisionTree::fit(rng, criterion, table, DecisionTreeOptions {
-            max_features: Some(max_features),
-            ..Default::default()
-        })
+        DecisionTree::fit(
+            rng,
+            criterion,
+            table,
+            DecisionTreeOptions {
+                max_features: Some(max_features),
+                ..Default::default()
+            },
+        )
     }
 
-    fn tree_rngs(&self) -> impl Iterator<Item=StdRng> {
+    fn tree_rngs(&self) -> impl Iterator<Item = StdRng> {
         let seed_u64 = self.seed.unwrap_or_else(|| random());
         let mut seed = [0u8; 32];
         (&mut seed[0..8]).copy_from_slice(&seed_u64.to_be_bytes()[..]);
@@ -187,11 +185,14 @@ mod tests {
             parallel: true,
             ..Default::default()
         }
-            .fit(Mse, table);
+        .fit(Mse, table);
         assert_eq!(
-            regressor.predict(&[
-                0.00632, 18.0, 2.31, 0.0, 0.538, 6.575, 65.2, 4.09, 1.0, 296.0, 15.3, 396.9, 4.98
-            ][..]),
+            regressor.predict(
+                &[
+                    0.00632, 18.0, 2.31, 0.0, 0.538, 6.575, 65.2, 4.09, 1.0, 296.0, 15.3, 396.9,
+                    4.98
+                ][..]
+            ),
             25.393999999999995
         );
 
@@ -199,9 +200,12 @@ mod tests {
         regressor.serialize(&mut bytes)?;
         let regressor_deserialized = RandomForest::deserialize(&mut &bytes[..])?;
         assert_eq!(
-            regressor_deserialized.predict(&[
-                0.00632, 18.0, 2.31, 0.0, 0.538, 6.575, 65.2, 4.09, 1.0, 296.0, 15.3, 396.9, 4.98
-            ][..]),
+            regressor_deserialized.predict(
+                &[
+                    0.00632, 18.0, 2.31, 0.0, 0.538, 6.575, 65.2, 4.09, 1.0, 296.0, 15.3, 396.9,
+                    4.98
+                ][..]
+            ),
             25.393999999999995
         );
 
@@ -221,7 +225,7 @@ mod tests {
             parallel: true,
             ..Default::default()
         }
-            .fit(Gini, table.clone());
+        .fit(Gini, table.clone());
         assert_eq!(classifier.predict(&[5.1, 3.5, 1.4, 0.0]), 0.0);
 
         let mut bytes = Vec::new();
