@@ -27,7 +27,6 @@ impl CommandHandler {
         tokio::spawn({
             let cmd_tx_owned = self.cmd_tx.to_owned();
             async move {
-
                 let mut index_map: HashMap<String, u32> = HashMap::new();
                 loop {
                     let notification = match link_rx.recv().unwrap() {
@@ -37,14 +36,18 @@ impl CommandHandler {
 
                     match notification {
                         Notification::Forward(forward) => {
-                            if let Ok(data) = from_slice::<SensorPayload>(&forward.publish.payload) {
+                            if let Ok(data) = from_slice::<SensorPayload>(&forward.publish.payload)
+                            {
                                 tracing::debug!("Receive: {:?}", data);
 
                                 let sensor_index = index_map.entry(data.id.clone()).or_insert(0);
-                                cmd_tx_owned.send((data, sensor_index.clone())).await.unwrap();
+                                cmd_tx_owned
+                                    .send((data, sensor_index.clone()))
+                                    .await
+                                    .unwrap();
                                 *sensor_index += 1;
                             }
-                        },
+                        }
                         v => tracing::error!("{v:?}"),
                     }
                 }

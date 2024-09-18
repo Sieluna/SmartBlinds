@@ -16,13 +16,13 @@ pub fn simulation_lux(day_fraction: f64) -> f64 {
     if day_fraction >= SUNRISE_START && day_fraction <= SUNSET_END {
         if day_fraction <= SUNRISE_END {
             // Sunrise - increase light smoothly using a sine function
-            let sunrise_radians = ((day_fraction - SUNRISE_START) / (SUNRISE_END - SUNRISE_START))
-                * consts::PI / 2.0;
+            let sunrise_radians =
+                ((day_fraction - SUNRISE_START) / (SUNRISE_END - SUNRISE_START)) * consts::PI / 2.0;
             sunrise_radians.sin() * MAX_SUNLIGHT_LUX
         } else if day_fraction >= SUNSET_START {
             // Sunset - decrease light smoothly using a cosine function
-            let sunset_radians = ((day_fraction - SUNSET_START) / (SUNSET_END - SUNSET_START))
-                * consts::PI / 2.0;
+            let sunset_radians =
+                ((day_fraction - SUNSET_START) / (SUNSET_END - SUNSET_START)) * consts::PI / 2.0;
             sunset_radians.cos() * MAX_SUNLIGHT_LUX
         } else {
             // Full daylight

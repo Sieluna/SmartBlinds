@@ -4,8 +4,8 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rumqttd::{Broker, Config, ConnectionSettings, RouterConfig, ServerSettings, TlsConfig};
 use rumqttd::local::{LinkRx, LinkTx};
+use rumqttd::{Broker, Config, ConnectionSettings, RouterConfig, ServerSettings, TlsConfig};
 use tokio::sync::Mutex;
 
 use crate::settings::Gateway;
@@ -34,8 +34,9 @@ impl MockBroker {
                 initialized_filters: None,
                 shared_subscriptions_strategy: Default::default(),
             },
-            v4: Some(HashMap::from([
-                (2.to_string(), ServerSettings {
+            v4: Some(HashMap::from([(
+                2.to_string(),
+                ServerSettings {
                     name: "v4-2".to_string(),
                     listen: (gateway.host.parse::<IpAddr>()?, gateway.port).into(),
                     tls: tls_config,
@@ -48,8 +49,8 @@ impl MockBroker {
                         external_auth: None,
                         dynamic_filters: true,
                     },
-                })
-            ])),
+                },
+            )])),
             v5: None,
             ws: None,
             cluster: None,
@@ -68,9 +69,7 @@ impl MockBroker {
     pub fn start(&self) {
         let broker_owned = self.broker.to_owned();
 
-        tokio::spawn(async move {
-            broker_owned.lock().await.start().unwrap()
-        });
+        tokio::spawn(async move { broker_owned.lock().await.start().unwrap() });
     }
 
     pub async fn link(&self, topic: &str) -> (LinkTx, LinkRx) {

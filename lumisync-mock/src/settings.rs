@@ -1,5 +1,5 @@
-use std::{env, error, io};
 use std::path::PathBuf;
+use std::{env, error, io};
 
 use serde::{Deserialize, Serialize};
 
@@ -44,9 +44,11 @@ pub struct Settings {
 impl Settings {
     pub fn new() -> Result<Self, Box<dyn error::Error>> {
         // TODO: Need to be replaced until `CARGO_RUSTC_CURRENT_DIR` is stable
-        let mut settings: Settings = toml::from_str(
-            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", "configs/default.toml"))
-        )?;
+        let mut settings: Settings = toml::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../",
+            "configs/default.toml"
+        )))?;
 
         if let Some(auth) = &settings.gateway.auth {
             let cert_path = Self::normalize_path(&auth.cert_path)?
@@ -56,7 +58,10 @@ impl Settings {
                 .to_string_lossy()
                 .to_string();
 
-            settings.gateway.auth = Some(GatewayAuth { cert_path, key_path });
+            settings.gateway.auth = Some(GatewayAuth {
+                cert_path,
+                key_path,
+            });
         }
 
         Ok(settings)
@@ -68,9 +73,7 @@ impl Settings {
         Ok(if path_buf.is_absolute() {
             path_buf.clone()
         } else {
-            env::current_dir()?
-                .as_path()
-                .join(&path_buf)
+            env::current_dir()?.as_path().join(&path_buf)
         })
     }
 }

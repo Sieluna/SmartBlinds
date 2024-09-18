@@ -25,7 +25,7 @@ pub struct SensorPayload {
     airp: Option<f32>,
     lght: Option<i32>,
     temp: Option<f32>,
-    humd: Option<f32>
+    humd: Option<f32>,
 }
 
 pub async fn run(settings: &Arc<Settings>) {
@@ -34,15 +34,14 @@ pub async fn run(settings: &Arc<Settings>) {
     let mock = Arc::new(settings.mock.clone());
     let prefix = format!(
         "cloudext/{}/{}/{}/{}",
-        &topic.prefix_type,
-        &topic.prefix_mode,
-        &topic.prefix_country,
-        &mock.group_name,
+        &topic.prefix_type, &topic.prefix_mode, &topic.prefix_country, &mock.group_name,
     );
 
     let broker = MockBroker::new(&gateway).expect("Fail to create broker");
     let mut command_handler = CommandHandler::new();
-    let mut link_tx = command_handler.start_sensor_command_processor(&broker).await;
+    let mut link_tx = command_handler
+        .start_sensor_command_processor(&broker)
+        .await;
 
     let mut interval = time::interval(Duration::from_secs(10));
     let mut mock_index = 0;
@@ -100,7 +99,13 @@ async fn publish_env_message(
     data: SensorPayload,
     day_fraction: f64,
 ) -> Result<(), Box<dyn Error>> {
-    let SensorPayload { id, airp, lght, temp, humd } = data;
+    let SensorPayload {
+        id,
+        airp,
+        lght,
+        temp,
+        humd,
+    } = data;
     let radians = day_fraction * 2.0 * std::f64::consts::PI;
     let mut rng = rand::thread_rng();
 
