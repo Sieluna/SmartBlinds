@@ -19,7 +19,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 serialport = "4"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono"] }
-time = { version = "0.3", features = ["serde"] }
+time = { workspace = true, features = ["serde"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 toml.workspace = true

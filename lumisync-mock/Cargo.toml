@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chrono = "0.4"
-rand = "0.8"
-rumqttd = "0.19"
+rand = "0.9"
+rand_distr = "0.5"
+rumqttd = { git = "https://github.com/bytebeamio/rumqtt" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+time = { workspace = true, features = ["serde"] }
 tokio = { workspace = true, features = ["full"] }
 toml.workspace = true
 tracing.workspace = true
