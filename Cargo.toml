@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "lumisync-analyser",
+    "lumisync-api",
     "lumisync-embedded",
     "lumisync-server",
     "lumisync-mock"
@@ -9,6 +10,7 @@ exclude = ["samples"]
 resolver = "2"
 
 [workspace.dependencies]
+lumisync_api = { path = "./lumisync-api" }
 serde = "1"
 serde_json = "1"
 time = "0.3"
@@ -16,6 +18,7 @@ tokio = "1"
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+uuid = "1"
 
 [workspace.dependencies.analyser]
 package = "lumisync-analyser"

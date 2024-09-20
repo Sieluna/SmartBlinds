@@ -1,0 +1,10 @@
+[package]
+name = "lumisync_api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+time = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
