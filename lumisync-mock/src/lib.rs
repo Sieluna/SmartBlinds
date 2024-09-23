@@ -122,7 +122,7 @@ async fn publish_env_message(
     } = data;
 
     let (air_pressure, temperature, humidity, light) = simulator.generate(day_fraction);
-    
+
     let airp_value = airp.unwrap_or(air_pressure as f32);
     let temp_value = temp.unwrap_or(temperature as f32);
     let humd_value = humd.unwrap_or(humidity as f32);

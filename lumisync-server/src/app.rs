@@ -6,19 +6,7 @@ use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 
 use crate::configs::{SchemaManager, Settings, Storage};
-use crate::handles::region_handle::{create_region, get_regions, RegionState};
-use crate::handles::sensor_handle::{
-    get_sensor_data, get_sensor_data_in_range, get_sensors, get_sensors_by_region, SensorState,
-};
-use crate::handles::setting_handle::{
-    create_setting, get_settings, get_settings_by_region, SettingState,
-};
-use crate::handles::sse_handle::{sse_handler, SSEState};
-use crate::handles::user_handle::{authenticate_user, authorize_user, create_user, UserState};
-use crate::handles::window_handle::{
-    create_window, delete_window, get_window_owners, get_windows, get_windows_by_region,
-    update_window, WindowState,
-};
+use crate::handles::*;
 use crate::middlewares::{auth, TokenState};
 use crate::services::{AuthService, TokenService};
 

@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::error::ErrorCode;
-use super::{Priority, WindowData};
+use super::{Priority, SensorData, WindowData};
 
 /// Device Message Frame
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +45,7 @@ pub enum DeviceCommand {
         device_id: i32,
         /// Window data
         #[serde(flatten)]
-        data: WindowData
+        data: WindowData,
     },
     /// Calibrate device
     Calibrate,
@@ -53,14 +53,37 @@ pub enum DeviceCommand {
     EmergencyStop,
 }
 
+/// Device Type
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DeviceType {
+    /// Window
+    Window,
+    /// Sensor
+    Sensor,
+}
+
+/// Device Value Types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DeviceValue {
+    Window {
+        /// Window ID
+        window_id: i32,
+        /// Window data
+        data: WindowData,
+    },
+    Sensor {
+        /// Sensor ID
+        sensor_id: i32,
+        /// Sensor data
+        data: SensorData,
+    },
+}
+
 /// Device Status Report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceStatus {
-    /// Device identifier
-    pub device_id: i32,
-    /// Window data
-    #[serde(flatten)]
-    pub data: WindowData,
+    /// Device value
+    pub data: DeviceValue,
     /// Current position percentage
     pub position: u8,
     /// Battery level percentage
@@ -74,6 +97,8 @@ pub struct DeviceStatus {
 pub struct DeviceError {
     /// Device identifier
     pub device_id: i32,
+    /// Device Type
+    pub device_type: DeviceType,
     /// Error code
     pub code: ErrorCode,
     /// Error message

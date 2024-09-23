@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use lumisync_server::configs::settings::Settings;
+use lumisync_server::configs::Settings;
 use lumisync_server::run;
 
 #[tokio::main]

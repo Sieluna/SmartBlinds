@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use super::device::{DeviceCommand, DeviceStatus};
 use super::error::ErrorCode;
-use super::{PolicyData, Priority, WindowData};
+use super::{Priority, RegionSettingData, WindowData, WindowSettingData};
 
 /// Application Message Container
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,12 +52,15 @@ pub enum CloudCommand {
     ConfigureRegion {
         /// Target region ID
         region_id: i32,
-        /// Region policy settings
-        policy: PolicyData,
-        /// Start time
-        start: OffsetDateTime,
-        /// End time
-        end: OffsetDateTime,
+        /// Region plan settings
+        plan: Vec<RegionSettingData>,
+    },
+    /// Configure a window's settings
+    ConfigureWindow {
+        /// Target window ID
+        window_id: i32,
+        /// Window plan settings
+        plan: Vec<WindowSettingData>,
     },
     /// Control multiple devices
     ControlDevices {

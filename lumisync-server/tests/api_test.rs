@@ -6,12 +6,8 @@ use axum::http::{Request, StatusCode};
 use time::OffsetDateTime;
 use tower::util::ServiceExt;
 
-use lumisync_server::handles::region_handle::RegionBody;
-use lumisync_server::handles::sensor_handle::SensorBody;
-use lumisync_server::handles::setting_handle::SettingBody;
-use lumisync_server::handles::user_handle::{UserLoginBody, UserRegisterBody};
-use lumisync_server::handles::window_handle::WindowBody;
-use lumisync_server::models::user::Role;
+use lumisync_server::handles::*;
+use lumisync_server::models::Role;
 
 use crate::common::mock_app::MockApp;
 

@@ -17,7 +17,7 @@ pub use region_setting::{RegionSetting, RegionSettingTable};
 pub use sensor::{Sensor, SensorTable};
 pub use sensor_data::{SensorData, SensorDataTable};
 pub use setting::{Setting, SettingTable};
-pub use user::{User, Role, UserTable};
+pub use user::{Role, User, UserTable};
 pub use user_region::{UserRegion, UserRegionTable};
 pub use window::{Window, WindowTable};
 pub use window_setting::{WindowSetting, WindowSettingTable};

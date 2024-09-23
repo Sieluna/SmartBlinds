@@ -26,22 +26,33 @@ pub struct SensorData {
     pub illuminance: i32,
     /// Relative humidity percentage
     pub humidity: f32,
-    /// timestamp of the sensor data
+    /// Timestamp of the sensor data
     pub timestamp: OffsetDateTime,
 }
 
 /// Window Data Structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowData {
-    /// window position (0-100%)
+    /// Window position (0-100%)
     pub target_position: u8,
 }
 
-/// Region Policy Data Structure
+/// Region Setting Data Structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PolicyData {
+pub struct RegionSettingData {
     /// Target light range
     pub light_range: (i32, i32),
     /// Target temperature range
     pub temperature_range: (f32, f32),
+    /// Target time range
+    pub time_range: (OffsetDateTime, OffsetDateTime),
+}
+
+/// Window Setting Data Structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowSettingData {
+    /// Target window position range
+    pub window_position: (u8, u8),
+    /// Target time range
+    pub time_range: (OffsetDateTime, OffsetDateTime),
 }

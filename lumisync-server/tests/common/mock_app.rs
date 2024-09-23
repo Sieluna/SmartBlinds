@@ -3,31 +3,11 @@ use std::sync::Arc;
 use axum::routing::{get, post, put};
 use axum::{middleware, Extension, Router};
 
-use lumisync_server::configs::schema::SchemaManager;
-use lumisync_server::configs::settings::{Auth, Database};
-use lumisync_server::configs::storage::Storage;
-use lumisync_server::handles::region_handle::{create_region, get_regions, RegionState};
-use lumisync_server::handles::sensor_handle::{
-    create_sensor, get_sensors, get_sensors_by_region, SensorState,
-};
-use lumisync_server::handles::setting_handle::{
-    create_setting, get_settings, get_settings_by_region, SettingState,
-};
-use lumisync_server::handles::user_handle::{
-    authenticate_user, authorize_user, create_user, UserState,
-};
-use lumisync_server::handles::window_handle::{
-    create_window, delete_window, get_windows, get_windows_by_region, update_window, WindowState,
-};
-use lumisync_server::middlewares::auth_middleware::{auth, TokenState};
-use lumisync_server::models::group::Group;
-use lumisync_server::models::region::Region;
-use lumisync_server::models::sensor::Sensor;
-use lumisync_server::models::setting::Setting;
-use lumisync_server::models::user::{Role, User};
-use lumisync_server::models::window::Window;
-use lumisync_server::services::auth_service::AuthService;
-use lumisync_server::services::token_service::{TokenClaims, TokenService};
+use lumisync_server::configs::{Auth, Database, SchemaManager, Storage};
+use lumisync_server::handles::*;
+use lumisync_server::middlewares::{auth, TokenState};
+use lumisync_server::models::*;
+use lumisync_server::services::{AuthService, TokenClaims, TokenService};
 
 pub struct MockApp {
     pub router: Router,
