@@ -6,10 +6,9 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::configs::storage::Storage;
-use crate::models::user::{Role, User};
-use crate::services::auth_service::AuthService;
-use crate::services::token_service::{TokenClaims, TokenService};
+use crate::configs::Storage;
+use crate::models::{Role, User};
+use crate::services::{AuthService, TokenClaims, TokenService};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UserRegisterBody {

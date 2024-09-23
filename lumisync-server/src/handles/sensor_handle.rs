@@ -14,11 +14,9 @@ use tokio::sync::Mutex;
 use tokio::time::interval;
 use tokio_stream::{wrappers, Stream, StreamExt};
 
-use crate::configs::storage::Storage;
-use crate::models::sensor::Sensor;
-use crate::models::sensor_data::SensorData;
-use crate::models::user::Role;
-use crate::services::token_service::TokenClaims;
+use crate::configs::Storage;
+use crate::models::{Role, Sensor, SensorData};
+use crate::services::TokenClaims;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SensorBody {

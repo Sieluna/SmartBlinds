@@ -7,9 +7,9 @@ use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::configs::storage::Storage;
-use crate::models::setting::Setting;
-use crate::services::token_service::TokenClaims;
+use crate::configs::Storage;
+use crate::models::Setting;
+use crate::services::TokenClaims;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SettingBody {

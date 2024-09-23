@@ -161,7 +161,6 @@ impl MockApp {
                     auth,
                 ))
                 .with_state(WindowState {
-                    actuator_service: None,
                     storage: self.storage.clone(),
                 }),
         );

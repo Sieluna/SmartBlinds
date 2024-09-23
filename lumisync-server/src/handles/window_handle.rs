@@ -6,11 +6,9 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::configs::storage::Storage;
-use crate::models::user::{Role, User};
-use crate::models::window::Window;
-use crate::services::actuator_service::ActuatorService;
-use crate::services::token_service::TokenClaims;
+use crate::configs::Storage;
+use crate::models::{Role, User, Window};
+use crate::services::TokenClaims;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WindowBody {
@@ -21,7 +19,6 @@ pub struct WindowBody {
 
 #[derive(Clone)]
 pub struct WindowState {
-    pub actuator_service: Option<Arc<ActuatorService>>,
     pub storage: Arc<Storage>,
 }
 

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 
 use crate::app::create_app;
-use crate::configs::settings::Settings;
+use crate::configs::Settings;
 
 pub mod app;
 pub mod configs;

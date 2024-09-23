@@ -6,10 +6,9 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::configs::storage::Storage;
-use crate::models::region::Region;
-use crate::models::user::Role;
-use crate::services::token_service::TokenClaims;
+use crate::configs::Storage;
+use crate::models::{Region, Role};
+use crate::services::TokenClaims;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RegionBody {

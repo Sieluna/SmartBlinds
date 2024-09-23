@@ -1,14 +1,4 @@
-use crate::models::group::GroupTable;
-use crate::models::region::RegionTable;
-use crate::models::region_setting::RegionSettingTable;
-use crate::models::sensor::SensorTable;
-use crate::models::sensor_data::SensorDataTable;
-use crate::models::setting::SettingTable;
-use crate::models::user::UserTable;
-use crate::models::user_region::UserRegionTable;
-use crate::models::window::WindowTable;
-use crate::models::window_setting::WindowSettingTable;
-use crate::models::Table;
+use crate::models::*;
 
 pub struct SchemaManager {
     tables: Vec<Box<dyn Table>>,

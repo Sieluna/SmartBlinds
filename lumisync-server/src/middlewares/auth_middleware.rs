@@ -8,8 +8,8 @@ use axum::response::IntoResponse;
 use axum_extra::headers::{Authorization, Header};
 use serde::{Deserialize, Serialize};
 
-use crate::configs::storage::Storage;
-use crate::services::token_service::TokenService;
+use crate::configs::Storage;
+use crate::services::TokenService;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TokenQuery {

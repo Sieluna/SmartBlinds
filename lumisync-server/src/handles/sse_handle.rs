@@ -9,10 +9,8 @@ use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
 use tokio_stream::{wrappers, Stream};
 
-use crate::configs::storage::Storage;
-use crate::models::sensor_data::SensorData;
-use crate::models::window::Window;
-use crate::services::actuator_service::ActuatorService;
+use crate::configs::Storage;
+use crate::models::{SensorData, Window};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ServiceEvent {
@@ -22,7 +20,6 @@ pub enum ServiceEvent {
 
 #[derive(Clone)]
 pub struct SSEState {
-    pub actuator_service: Option<Arc<ActuatorService>>,
     pub storage: Arc<Storage>,
     pub sender: Sender<ServiceEvent>,
 }

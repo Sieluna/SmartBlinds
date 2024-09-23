@@ -1,14 +1,26 @@
-pub mod event;
-pub mod group;
-pub mod region;
-pub mod region_setting;
-pub mod sensor;
-pub mod sensor_data;
-pub mod setting;
-pub mod user;
-pub mod user_region;
-pub mod window;
-pub mod window_setting;
+mod event;
+mod group;
+mod region;
+mod region_setting;
+mod sensor;
+mod sensor_data;
+mod setting;
+mod user;
+mod user_region;
+mod window;
+mod window_setting;
+
+pub use event::{Event, EventTable};
+pub use group::{Group, GroupTable};
+pub use region::{Region, RegionTable};
+pub use region_setting::{RegionSetting, RegionSettingTable};
+pub use sensor::{Sensor, SensorTable};
+pub use sensor_data::{SensorData, SensorDataTable};
+pub use setting::{Setting, SettingTable};
+pub use user::{User, Role, UserTable};
+pub use user_region::{UserRegion, UserRegionTable};
+pub use window::{Window, WindowTable};
+pub use window_setting::{WindowSetting, WindowSettingTable};
 
 pub trait Table {
     /// The name of the table

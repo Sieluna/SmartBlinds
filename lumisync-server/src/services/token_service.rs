@@ -4,8 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use serde::{Deserialize, Serialize};
 
-use crate::configs::settings::Auth;
-use crate::models::user::{Role, User};
+use crate::configs::Auth;
+use crate::models::{Role, User};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {

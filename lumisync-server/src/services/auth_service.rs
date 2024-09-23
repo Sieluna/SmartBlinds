@@ -3,7 +3,7 @@ use std::sync::Arc;
 use argon2::password_hash::{rand_core, SaltString};
 use argon2::{password_hash, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 
-use crate::models::user::User;
+use crate::models::User;
 
 #[derive(Debug, Clone)]
 pub struct Argon2Hash(Argon2<'static>);
@@ -42,7 +42,7 @@ impl AuthService {
 
 #[cfg(test)]
 mod tests {
-    use crate::models::user::{Role, User};
+    use crate::models::{Role, User};
 
     use super::*;
 
