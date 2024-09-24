@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::Table;
 
@@ -7,6 +8,7 @@ pub struct Window {
     pub id: i32,
     pub region_id: i32,
     pub name: String,
+    pub location: Value,
     /// State in a range of [-1, 1].
     /// when 0 means off;
     /// when -1 means rotate anti-clockwise to end;
@@ -29,6 +31,7 @@ impl Table for WindowTable {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 region_id INTEGER NOT NULL,
                 name VARCHAR(255) NOT NULL UNIQUE,
+                location JSON,
                 state REAL NOT NULL,
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE
             );

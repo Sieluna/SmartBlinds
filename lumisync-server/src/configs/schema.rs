@@ -65,15 +65,16 @@ impl Default for SchemaManager {
             Box::new(GroupTable),
             Box::new(UserTable),
             Box::new(RegionTable),
-            Box::new(SettingTable),
+            Box::new(RegionSettingTable),
             Box::new(WindowTable),
-            Box::new(SensorTable),
-            Box::new(SensorDataTable),
+            Box::new(WindowRecordTable),
             Box::new(WindowSettingTable),
-            Box::new(RegionSettingTable),
+            Box::new(SensorTable),
+            Box::new(SensorRecordTable),
+            Box::new(EventTable),
             // Reference
+            Box::new(UserGroupTable),
             Box::new(UserRegionTable),
-            Box::new(RegionSettingTable),
         ])
     }
 }

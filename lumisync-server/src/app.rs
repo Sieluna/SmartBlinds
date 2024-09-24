@@ -3,20 +3,33 @@ use std::sync::Arc;
 use axum::routing::{get, post};
 use axum::{middleware, Router};
 use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 
 use crate::configs::{SchemaManager, Settings, Storage};
 use crate::handles::*;
 use crate::middlewares::{auth, TokenState};
-use crate::services::{AuthService, TokenService};
+use crate::services::{AuthService, MessageService, TokenService};
 
 pub async fn create_app(settings: &Arc<Settings>) -> Router {
     let (sender, _receiver) = broadcast::channel(100);
+    let (client_sender, _client_receiver) = mpsc::channel(100);
+    let (edge_sender, edge_receiver) = mpsc::channel(100);
     let storage = Arc::new(
         Storage::new(settings.database.clone(), SchemaManager::default())
             .await
             .unwrap(),
     );
+
+    let message_service = Arc::new(MessageService::new(
+        storage.clone(),
+        client_sender.clone(),
+        edge_sender.clone(),
+    ));
+    let message_service_clone = message_service.clone();
+    tokio::spawn(async move {
+        let _ = message_service_clone.start_listening(edge_receiver).await;
+    });
 
     // let analyser_service = Arc::new(AnalyserService::new(&storage, &sender).await.unwrap());
     // analyser_service.start_listener();

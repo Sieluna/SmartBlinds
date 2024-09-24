@@ -60,9 +60,9 @@ def main():
     threads = []
 
     if use_mock:
-        threads.append(run_in_thread("cargo run --package lumisync-mock", "\033[0;33m[Mock]\033[0;0m"))
+        threads.append(run_in_thread("cargo run --package lumisync_mock", "\033[0;33m[Mock]\033[0;0m"))
 
-    threads.append(run_in_thread("cargo run --package lumisync-server", "\033[0;34m[Server]\033[0;0m"))
+    threads.append(run_in_thread("cargo run --package lumisync_server", "\033[0;34m[Server]\033[0;0m"))
     threads.append(run_in_thread("npm run web", "\033[0;32m[Web]\033[0;0m"))
 
     for thread in threads:

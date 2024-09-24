@@ -6,10 +6,14 @@ use super::Table;
 pub struct Region {
     pub id: i32,
     pub group_id: i32,
+    /// The name of the region.
     pub name: String,
-    // Light is the global lumen in room, average of sensors in region.
+    /// Light is the global lumen in room, average of sensors in region.
     pub light: i32,
+    /// Temperature is the global temperature in room, average of sensors in region.
     pub temperature: f32,
+    /// Humidity is the global humidity in room, average of sensors in region.
+    pub humidity: f32,
 }
 
 #[derive(Clone)]
@@ -29,6 +33,7 @@ impl Table for RegionTable {
                 name VARCHAR(255) NOT NULL UNIQUE,
                 light INTEGER NOT NULL,
                 temperature REAL NOT NULL,
+                humidity REAL NOT NULL,
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE
             );
             "#,

@@ -42,7 +42,7 @@ impl AuthService {
 
 #[cfg(test)]
 mod tests {
-    use crate::models::{Role, User};
+    use crate::models::User;
 
     use super::*;
 
@@ -57,10 +57,8 @@ mod tests {
 
         let user = User {
             id: 0,
-            group_id: 0,
             email: String::from("test@test.com"),
             password: hash,
-            role: Role::User.to_string(),
         };
 
         let result = auth_service.verify(&user, password).unwrap();

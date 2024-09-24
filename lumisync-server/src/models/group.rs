@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use super::Table;
 
@@ -6,6 +7,8 @@ use super::Table;
 pub struct Group {
     pub id: i32,
     pub name: String,
+    pub description: Option<String>,
+    pub created_at: OffsetDateTime,
 }
 
 #[derive(Clone)]
@@ -21,7 +24,9 @@ impl Table for GroupTable {
             r#"
             CREATE TABLE IF NOT EXISTS groups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name VARCHAR(255) NOT NULL UNIQUE
+                name VARCHAR(255) NOT NULL UNIQUE,
+                description TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             "#,
         )

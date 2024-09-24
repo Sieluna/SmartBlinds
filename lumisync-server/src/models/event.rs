@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use time::OffsetDateTime;
 
 use super::Table;
@@ -7,7 +8,7 @@ use super::Table;
 pub struct Event {
     pub id: i32,
     pub event_type: String,
-    pub payload: String,
+    pub payload: Value,
     pub time: OffsetDateTime,
 }
 
@@ -25,8 +26,8 @@ impl Table for EventTable {
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_type VARCHAR(255) NOT NULL,
-                payload TEXT NOT NULL,
-                time TIMESTAMP NOT NULL
+                payload JSON NOT NULL DEFAULT '{}',
+                time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             "#,
         )

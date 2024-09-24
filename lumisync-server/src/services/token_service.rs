@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -17,8 +18,7 @@ pub struct Token {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub sub: i32,
-    pub group_id: i32,
-    pub role: Role,
+    pub roles: HashMap<i32, Role>,
     pub iat: u64,
     pub exp: u64,
 }
@@ -26,16 +26,14 @@ pub struct TokenClaims {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenPayload {
     pub id: i32,
-    pub group_id: i32,
-    pub role: Role,
+    pub roles: HashMap<i32, Role>,
 }
 
-impl From<User> for TokenPayload {
-    fn from(user: User) -> Self {
+impl From<(User, HashMap<i32, Role>)> for TokenPayload {
+    fn from((user, roles): (User, HashMap<i32, Role>)) -> Self {
         TokenPayload {
             id: user.id,
-            group_id: user.group_id,
-            role: user.role.into(),
+            roles,
         }
     }
 }
@@ -44,8 +42,7 @@ impl From<TokenClaims> for TokenPayload {
     fn from(token: TokenClaims) -> Self {
         TokenPayload {
             id: token.sub,
-            group_id: token.group_id,
-            role: token.role,
+            roles: token.roles,
         }
     }
 }
@@ -91,8 +88,7 @@ impl TokenService {
 
         let claims = TokenClaims {
             sub: token_payload.id,
-            group_id: token_payload.group_id,
-            role: token_payload.role,
+            roles: token_payload.roles,
             iat,
             exp,
         };
@@ -117,13 +113,11 @@ mod tests {
         });
         let user = User {
             id: 1,
-            group_id: 1,
             email: String::from("test@test.com"),
             password: String::from("test"),
-            role: Role::User.to_string(),
         };
 
-        let token = token_service.generate_token(user.to_owned()).unwrap();
+        let token = token_service.generate_token((user.to_owned(), HashMap::new())).unwrap();
 
         let claims = token_service
             .retrieve_token_claims(&token.token)
@@ -131,7 +125,6 @@ mod tests {
             .claims;
 
         assert_eq!(claims.sub, user.id);
-        assert_eq!(claims.group_id, user.group_id);
-        assert_eq!(claims.role, user.role.into());
+        assert!(claims.roles.is_empty());
     }
 }

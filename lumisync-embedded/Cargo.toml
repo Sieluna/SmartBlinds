@@ -1,5 +1,5 @@
 [package]
-name = "lumisync-embedded"
+name = "lumisync_embedded"
 version = "0.1.0"
 edition = "2021"
 

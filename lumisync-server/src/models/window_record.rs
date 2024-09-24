@@ -3,35 +3,31 @@ use time::OffsetDateTime;
 
 use super::Table;
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
-pub struct WindowSetting {
+#[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct WindowRecord {
     pub id: i32,
     pub window_id: i32,
     /// State in a range of [-1, 1].
-    pub min_state: f32,
-    pub max_state: f32,
-    pub start: OffsetDateTime,
-    pub end: OffsetDateTime,
+    pub state: f32,
+    pub time: OffsetDateTime,
 }
 
 #[derive(Clone)]
-pub struct WindowSettingTable;
+pub struct WindowRecordTable;
 
-impl Table for WindowSettingTable {
+impl Table for WindowRecordTable {
     fn name(&self) -> &'static str {
-        "windows_settings"
+        "window_records"
     }
 
     fn create(&self) -> String {
         String::from(
             r#"
-            CREATE TABLE IF NOT EXISTS windows_settings (
+            CREATE TABLE IF NOT EXISTS window_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 window_id INTEGER NOT NULL,
-                min_state REAL NOT NULL,
-                max_state REAL NOT NULL,
-                start TIMESTAMP NOT NULL,
-                end TIMESTAMP NOT NULL,
+                state REAL NOT NULL,
+                time TIMESTAMP NOT NULL,
                 FOREIGN KEY (window_id) REFERENCES windows (id) ON DELETE CASCADE
             );
             "#,
@@ -39,7 +35,7 @@ impl Table for WindowSettingTable {
     }
 
     fn dispose(&self) -> String {
-        String::from("DROP TABLE IF EXISTS windows_settings;")
+        String::from("DROP TABLE IF EXISTS window_records;")
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
