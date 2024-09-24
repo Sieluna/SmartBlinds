@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 
 use crate::broker::MockBroker;
 use crate::command::CommandHandler;
-use crate::settings::Settings;
+use crate::settings::{Settings, Source};
 use crate::simulate::SensorSimulator;
 
 pub mod broker;
@@ -27,17 +27,15 @@ pub struct SensorPayload {
 }
 
 pub async fn run(settings: &Arc<Settings>) {
-    let gateway = Arc::new(settings.gateway.clone());
-    let topic = Arc::new(gateway.topic.clone());
+    let source = Arc::new(settings.external.default.clone());
     let mock = Arc::new(settings.mock.clone());
 
-    // Create MQTT topic prefix
-    let prefix = format!(
-        "cloudext/{}/{}/{}/{}",
-        &topic.prefix_type, &topic.prefix_mode, &topic.prefix_country, &mock.group_name,
-    );
+    let prefix = match source.as_ref() {
+        Source::MQTT { topic, .. } => topic.clone(),
+        Source::HTTP { url } => url.clone(),
+    };
 
-    let broker = MockBroker::new(&gateway).expect("Failed to create broker");
+    let broker = MockBroker::new(&source).expect("Failed to create broker");
     let mut command_handler = CommandHandler::new();
     let mut link_tx = command_handler
         .start_sensor_command_processor(&broker)
@@ -79,7 +77,7 @@ pub async fn run(settings: &Arc<Settings>) {
                 let day_fraction = (mock_index % INTERVAL_COUNT) as f64 / INTERVAL_COUNT as f64;
 
                 let data = SensorPayload {
-                    id: "SENSOR-MOCK".to_string(),
+                    id: "MOCK-SENSOR".to_string(),
                     airp: None,
                     lght: None,
                     temp: None,
@@ -129,8 +127,10 @@ async fn publish_env_message(
     let lght_value = lght.unwrap_or(light as i32);
 
     let env_msg = json!({
-        // Message Id
-        "mId": index,
+        // Thingsee Message ID
+        "mId": 12100,
+        // Thingsee event-type, (10 = Timed event)
+        "mEv": 10,
         // Message Timestamp
         "mTs": OffsetDateTime::now_utc().unix_timestamp(),
         // Air Pressure (hPa)

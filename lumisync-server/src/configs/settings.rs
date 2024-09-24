@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{env, error, fs, io};
@@ -18,38 +19,10 @@ pub struct Logger {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Gateway {
-    pub host: String,
-    pub port: u16,
-    pub client_id: String,
-    pub topic: GatewayTopic,
-    pub auth: Option<GatewayAuth>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GatewayAuth {
-    pub cert_path: String,
-    pub key_path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GatewayTopic {
-    pub prefix_type: String,
-    pub prefix_mode: String,
-    pub prefix_country: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Database {
     pub migration_path: Option<String>,
     pub clean_start: bool,
     pub url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Embedded {
-    pub baud_rate: u32,
-    pub port_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,13 +32,58 @@ pub struct Auth {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MqttAuth {
+    BasicAuth { username: String, password: String },
+    TLSAuth { cert_path: String, key_path: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Source {
+    MQTT {
+        host: String,
+        port: u16,
+        client_id: String,
+        topic: String,
+        auth: Option<MqttAuth>,
+        #[serde(default = "default_qos")]
+        qos: u8,
+        #[serde(default = "default_clean_session")]
+        clean_session: bool,
+        #[serde(default = "default_keep_alive")]
+        keep_alive: u64,
+    },
+    HTTP {
+        url: String,
+    },
+}
+
+fn default_qos() -> u8 {
+    0
+}
+
+fn default_clean_session() -> bool {
+    true
+}
+
+fn default_keep_alive() -> u64 {
+    60
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Embedded {
+    pub baud_rate: u32,
+    pub port_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub server: Server,
     pub logger: Logger,
-    pub gateway: Gateway,
     pub database: Database,
-    pub embedded: Option<Embedded>,
     pub auth: Auth,
+    pub external: HashMap<String, Source>,
+    pub embedded: Option<Embedded>,
 }
 
 impl Settings {
@@ -91,18 +109,28 @@ impl Settings {
             settings = Value::try_into(merged_settings)?;
         }
 
-        if let Some(auth) = &settings.gateway.auth {
-            let cert_path = Self::normalize_path(&auth.cert_path)?
-                .to_string_lossy()
-                .to_string();
-            let key_path = Self::normalize_path(&auth.key_path)?
-                .to_string_lossy()
-                .to_string();
+        for (_, source) in &mut settings.external {
+            if let Source::MQTT { auth, .. } = source {
+                if let Some(auth_config) = auth {
+                    if let MqttAuth::TLSAuth {
+                        cert_path,
+                        key_path,
+                    } = auth_config
+                    {
+                        let normalized_cert_path = Self::normalize_path(cert_path)?
+                            .to_string_lossy()
+                            .to_string();
+                        let normalized_key_path = Self::normalize_path(key_path)?
+                            .to_string_lossy()
+                            .to_string();
 
-            settings.gateway.auth = Some(GatewayAuth {
-                cert_path,
-                key_path,
-            });
+                        *auth_config = MqttAuth::TLSAuth {
+                            cert_path: normalized_cert_path,
+                            key_path: normalized_key_path,
+                        };
+                    }
+                }
+            }
         }
 
         if let Some(migrate) = &settings.database.migration_path {
@@ -168,5 +196,62 @@ impl Settings {
         } else {
             env::current_dir()?.as_path().join(&path_buf)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_default_config() {
+        let settings = Settings::new().unwrap();
+
+        assert!(!settings.server.host.is_empty());
+        assert!(settings.server.port > 0);
+
+        assert!(!settings.logger.level.is_empty());
+
+        assert!(!settings.database.url.is_empty());
+
+        assert!(!settings.auth.secret.is_empty());
+        assert!(settings.auth.expiration > 0);
+
+        assert!(!settings.external.is_empty());
+        if let Source::MQTT {
+            host,
+            port,
+            client_id,
+            topic,
+            auth,
+            qos,
+            clean_session,
+            keep_alive,
+        } = settings.external.get("default").unwrap()
+        {
+            assert!(!host.is_empty());
+            assert!(*port > 0);
+            assert!(!client_id.is_empty());
+            assert!(!topic.is_empty());
+            assert!(*qos == 0);
+            assert!(clean_session == &true || clean_session == &false);
+            assert!(*keep_alive > 0);
+
+            if let Some(auth_config) = auth {
+                match auth_config {
+                    MqttAuth::BasicAuth { username, password } => {
+                        assert!(!username.is_empty());
+                        assert!(!password.is_empty());
+                    }
+                    MqttAuth::TLSAuth {
+                        cert_path,
+                        key_path,
+                    } => {
+                        assert!(!cert_path.is_empty());
+                        assert!(!key_path.is_empty());
+                    }
+                }
+            }
+        }
     }
 }

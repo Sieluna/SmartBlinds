@@ -8,20 +8,32 @@ use rumqttd::local::{LinkRx, LinkTx};
 use rumqttd::{Broker, Config, ConnectionSettings, RouterConfig, ServerSettings, TlsConfig};
 use tokio::sync::Mutex;
 
-use crate::settings::Gateway;
+use crate::settings::{MqttAuth, Source};
 
 pub struct MockBroker {
     pub broker: Arc<Mutex<Broker>>,
-    pub gateway: Arc<Gateway>,
+    pub source: Arc<Source>,
 }
 
 impl MockBroker {
-    pub fn new(gateway: &Arc<Gateway>) -> Result<Self, Box<dyn Error>> {
-        let tls_config = gateway.auth.as_ref().map(|auth| TlsConfig::Rustls {
-            capath: None,
-            certpath: auth.cert_path.clone(),
-            keypath: auth.key_path.clone(),
-        });
+    pub fn new(source: &Arc<Source>) -> Result<Self, Box<dyn Error>> {
+        let (host, port, tls_config) = match source.as_ref() {
+            Source::MQTT { host, port, auth, .. } => {
+                let tls_config = auth.as_ref().and_then(|auth| {
+                    if let MqttAuth::TLSAuth { cert_path, key_path } = auth {
+                        Some(TlsConfig::Rustls {
+                            capath: None,
+                            certpath: cert_path.clone(),
+                            keypath: key_path.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                });
+                (host.clone(), *port, tls_config)
+            }
+            _ => return Err("Only MQTT source is supported".into()),
+        };
 
         let broker = Broker::new(Config {
             id: 0,
@@ -38,7 +50,7 @@ impl MockBroker {
                 2.to_string(),
                 ServerSettings {
                     name: "v4-2".to_string(),
-                    listen: (gateway.host.parse::<IpAddr>()?, gateway.port).into(),
+                    listen: (host.parse::<IpAddr>()?, port).into(),
                     tls: tls_config,
                     next_connection_delay_ms: 10,
                     connections: ConnectionSettings {
@@ -62,7 +74,7 @@ impl MockBroker {
 
         Ok(Self {
             broker: Arc::new(Mutex::new(broker)),
-            gateway: Arc::clone(gateway),
+            source: Arc::clone(source),
         })
     }
 

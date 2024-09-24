@@ -1,5 +1,6 @@
+use std::error::Error;
 use std::path::PathBuf;
-use std::{env, error, io};
+use std::{env, io};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,11 +10,29 @@ pub struct Logger {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Gateway {
-    pub host: String,
-    pub port: u16,
-    pub topic: GatewayTopic,
-    pub auth: Option<GatewayAuth>,
+pub enum MqttAuth {
+    BasicAuth { username: String, password: String },
+    TLSAuth { cert_path: String, key_path: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Source {
+    MQTT {
+        host: String,
+        port: u16,
+        client_id: String,
+        topic: String,
+        auth: Option<MqttAuth>,
+    },
+    HTTP {
+        url: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct External {
+    pub default: Source,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,46 +41,36 @@ pub struct Mock {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GatewayTopic {
-    pub prefix_type: String,
-    pub prefix_mode: String,
-    pub prefix_country: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GatewayAuth {
-    pub cert_path: String,
-    pub key_path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub logger: Logger,
+    pub external: External,
     pub mock: Mock,
-    pub gateway: Gateway,
 }
 
 impl Settings {
-    pub fn new() -> Result<Self, Box<dyn error::Error>> {
-        // TODO: Need to be replaced until `CARGO_RUSTC_CURRENT_DIR` is stable
+    pub fn new() -> Result<Self, Box<dyn Error>> {
         let mut settings: Settings = toml::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../",
             "configs/default.toml"
         )))?;
 
-        if let Some(auth) = &settings.gateway.auth {
-            let cert_path = Self::normalize_path(&auth.cert_path)?
-                .to_string_lossy()
-                .to_string();
-            let key_path = Self::normalize_path(&auth.key_path)?
-                .to_string_lossy()
-                .to_string();
+        if let Source::MQTT { auth, .. } = &mut settings.external.default {
+            if let Some(auth_config) = auth {
+                if let MqttAuth::TLSAuth { cert_path, key_path } = auth_config {
+                    let normalized_cert_path = Self::normalize_path(cert_path)?
+                        .to_string_lossy()
+                        .to_string();
+                    let normalized_key_path = Self::normalize_path(key_path)?
+                        .to_string_lossy()
+                        .to_string();
 
-            settings.gateway.auth = Some(GatewayAuth {
-                cert_path,
-                key_path,
-            });
+                    *auth_config = MqttAuth::TLSAuth {
+                        cert_path: normalized_cert_path,
+                        key_path: normalized_key_path,
+                    };
+                }
+            }
         }
 
         Ok(settings)

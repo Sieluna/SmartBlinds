@@ -3,7 +3,7 @@ mod device;
 mod error;
 
 pub use application::{AppHeader, AppMessage, AppPayload, CloudCommand, EdgeReport};
-pub use device::{DeviceCommand, DeviceFrame, DeviceStatus};
+pub use device::{DeviceCommand, DeviceFrame, DeviceStatus, DeviceType, DeviceValue};
 pub use error::ErrorCode;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
