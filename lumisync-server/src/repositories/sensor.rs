@@ -107,169 +107,114 @@ impl SensorRepository {
 
 #[cfg(test)]
 mod tests {
-    use time::OffsetDateTime;
-
-    use crate::configs::{Database, SchemaManager};
-    use crate::models::{Group, Region};
-    use crate::repositories::{GroupRepository, RegionRepository};
+    use crate::repositories::tests::*;
 
     use super::*;
-
-    async fn setup_test_db() -> Arc<Storage> {
-        Arc::new(
-            Storage::new(
-                Database {
-                    migration_path: None,
-                    clean_start: true,
-                    url: String::from("sqlite::memory:"),
-                },
-                SchemaManager::default(),
-            )
-            .await
-            .unwrap(),
-        )
-    }
-
-    async fn create_test_region(storage: Arc<Storage>) -> i32 {
-        let now = OffsetDateTime::now_utc();
-        let group = Group {
-            id: 0,
-            name: "Test Group".to_string(),
-            description: Some("A test group".to_string()),
-            created_at: now,
-        };
-
-        let group_repo = GroupRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let group_id = group_repo.create(&group, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let region = Region {
-            id: 0,
-            group_id,
-            name: "Test Region".to_string(),
-            light: 500,
-            temperature: 22.0,
-            humidity: 45.0,
-        };
-
-        let region_repo = RegionRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let region_id = region_repo.create(&region, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        region_id
-    }
 
     #[tokio::test]
     async fn test_find_sensor_by_id() {
         let storage = setup_test_db().await;
-        let region_id = create_test_region(storage.clone()).await;
-
-        let sensor = Sensor {
-            id: 0,
-            region_id,
-            name: "Temperature Sensor 1".to_string(),
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 500, 22.0, 45.0).await;
+        let sensor = create_test_sensor(storage.clone(), region.id, "test_sensor").await;
 
         let repo = SensorRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&sensor, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(sensor.id).await.unwrap();
         assert!(found.is_some());
+
         let found_sensor = found.unwrap();
-        assert_eq!(found_sensor.name, "Temperature Sensor 1");
-        assert_eq!(found_sensor.region_id, region_id);
+        assert_eq!(found_sensor.name, sensor.name);
+        assert_eq!(found_sensor.region_id, region.id);
+    }
+
+    #[tokio::test]
+    async fn test_find_sensor_by_name() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 500, 22.0, 45.0).await;
+        let sensor1 = create_test_sensor(storage.clone(), region.id, "test_sensor_1").await;
+        let sensor2 = create_test_sensor(storage.clone(), region.id, "test_sensor_2").await;
+
+        let repo = SensorRepository::new(storage.clone());
+        let found_sensor1 = repo.find_by_name(&sensor1.name).await.unwrap();
+        assert!(found_sensor1.is_some());
+
+        let found_sensor1 = found_sensor1.unwrap();
+        assert_eq!(found_sensor1.name, sensor1.name);
+        assert_eq!(found_sensor1.region_id, region.id);
+
+        let found_sensor2 = repo.find_by_name(&sensor2.name).await.unwrap();
+        assert!(found_sensor2.is_some());
+
+        let found_sensor2 = found_sensor2.unwrap();
+        assert_eq!(found_sensor2.name, sensor2.name);
+        assert_eq!(found_sensor2.region_id, region.id);
+
+        let not_found = repo.find_by_name("non_existent_sensor").await.unwrap();
+        assert!(not_found.is_none());
     }
 
     #[tokio::test]
     async fn test_find_sensors_by_region() {
         let storage = setup_test_db().await;
-        let region_id = create_test_region(storage.clone()).await;
-
-        let sensors = vec![
-            Sensor {
-                id: 0,
-                region_id,
-                name: "Light Sensor 1".to_string(),
-            },
-            Sensor {
-                id: 0,
-                region_id,
-                name: "Humidity Sensor 1".to_string(),
-            },
-        ];
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 500, 22.0, 45.0).await;
+        let sensor1 = create_test_sensor(storage.clone(), region.id, "test_sensor_1").await;
+        let sensor2 = create_test_sensor(storage.clone(), region.id, "test_sensor_2").await;
 
         let repo = SensorRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        for sensor in &sensors {
-            repo.create(sensor, &mut tx).await.unwrap();
-        }
-        tx.commit().await.unwrap();
-
-        let found_sensors = repo.find_by_region_id(region_id).await.unwrap();
+        let found_sensors = repo.find_by_region_id(region.id).await.unwrap();
         assert_eq!(found_sensors.len(), 2);
 
         let sensor_names: Vec<String> = found_sensors.iter().map(|s| s.name.clone()).collect();
-        assert!(sensor_names.contains(&"Light Sensor 1".to_string()));
-        assert!(sensor_names.contains(&"Humidity Sensor 1".to_string()));
+        assert!(sensor_names.contains(&sensor1.name));
+        assert!(sensor_names.contains(&sensor2.name));
     }
 
     #[tokio::test]
     async fn test_update_sensor() {
         let storage = setup_test_db().await;
-        let region_id = create_test_region(storage.clone()).await;
-
-        let sensor = Sensor {
-            id: 0,
-            region_id,
-            name: "Original Sensor".to_string(),
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 500, 22.0, 45.0).await;
+        let sensor = create_test_sensor(storage.clone(), region.id, "test_sensor").await;
 
         let repo = SensorRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&sensor, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let updated_sensor = Sensor {
-            id,
-            region_id,
-            name: "Updated Sensor".to_string(),
+        let updated = Sensor {
+            id: sensor.id,
+            region_id: sensor.region_id,
+            name: "updated_sensor".to_string(),
         };
 
         let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.update(id, &updated_sensor, &mut tx).await.unwrap();
+        repo.update(sensor.id, &updated, &mut tx).await.unwrap();
         tx.commit().await.unwrap();
 
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(sensor.id).await.unwrap();
         assert!(found.is_some());
+
         let found_sensor = found.unwrap();
-        assert_eq!(found_sensor.name, "Updated Sensor");
+        assert_eq!(found_sensor.name, updated.name);
     }
 
     #[tokio::test]
     async fn test_delete_sensor() {
         let storage = setup_test_db().await;
-        let region_id = create_test_region(storage.clone()).await;
-
-        let sensor = Sensor {
-            id: 0,
-            region_id,
-            name: "Sensor to Delete".to_string(),
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 500, 22.0, 45.0).await;
+        let sensor = create_test_sensor(storage.clone(), region.id, "test_sensor").await;
 
         let repo = SensorRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&sensor, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
 
         let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.delete(id, &mut tx).await.unwrap();
+        repo.delete(sensor.id, &mut tx).await.unwrap();
         tx.commit().await.unwrap();
 
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(sensor.id).await.unwrap();
         assert!(found.is_none());
     }
 }

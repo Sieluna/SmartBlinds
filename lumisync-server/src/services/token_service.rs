@@ -31,10 +31,7 @@ pub struct TokenPayload {
 
 impl From<(User, HashMap<i32, Role>)> for TokenPayload {
     fn from((user, roles): (User, HashMap<i32, Role>)) -> Self {
-        TokenPayload {
-            id: user.id,
-            roles,
-        }
+        TokenPayload { id: user.id, roles }
     }
 }
 
@@ -117,7 +114,9 @@ mod tests {
             password: String::from("test"),
         };
 
-        let token = token_service.generate_token((user.to_owned(), HashMap::new())).unwrap();
+        let token = token_service
+            .generate_token((user.to_owned(), HashMap::new()))
+            .unwrap();
 
         let claims = token_service
             .retrieve_token_claims(&token.token)

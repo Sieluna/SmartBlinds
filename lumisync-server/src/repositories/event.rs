@@ -96,24 +96,9 @@ mod tests {
     use serde_json::json;
     use time::OffsetDateTime;
 
-    use crate::configs::{Database, SchemaManager};
+    use crate::repositories::tests::*;
 
     use super::*;
-
-    async fn setup_test_db() -> Arc<Storage> {
-        Arc::new(
-            Storage::new(
-                Database {
-                    migration_path: None,
-                    clean_start: true,
-                    url: String::from("sqlite::memory:"),
-                },
-                SchemaManager::default(),
-            )
-            .await
-            .unwrap(),
-        )
-    }
 
     #[tokio::test]
     async fn test_find_event_by_id() {

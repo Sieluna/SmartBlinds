@@ -1,44 +1,45 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use time::OffsetDateTime;
 
 use super::Table;
 
 #[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct WindowRecord {
+pub struct DeviceRecord {
     pub id: i32,
-    pub window_id: i32,
-    /// State in a range of [-1, 1].
-    pub state: f32,
+    pub device_id: i32,
+    pub data: Value,
+    /// The time of the record
     pub time: OffsetDateTime,
 }
 
 #[derive(Clone)]
-pub struct WindowRecordTable;
+pub struct DeviceRecordTable;
 
-impl Table for WindowRecordTable {
+impl Table for DeviceRecordTable {
     fn name(&self) -> &'static str {
-        "window_records"
+        "device_records"
     }
 
     fn create(&self) -> String {
         String::from(
             r#"
-            CREATE TABLE IF NOT EXISTS window_records (
+            CREATE TABLE IF NOT EXISTS device_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                window_id INTEGER NOT NULL,
-                state REAL NOT NULL,
+                device_id INTEGER NOT NULL,
+                data JSON NOT NULL,
                 time TIMESTAMP NOT NULL,
-                FOREIGN KEY (window_id) REFERENCES windows (id) ON DELETE CASCADE
+                FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE
             );
             "#,
         )
     }
 
     fn dispose(&self) -> String {
-        String::from("DROP TABLE IF EXISTS window_records;")
+        String::from("DROP TABLE IF EXISTS device_records;")
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
-        vec!["windows"]
+        vec!["devices"]
     }
 }

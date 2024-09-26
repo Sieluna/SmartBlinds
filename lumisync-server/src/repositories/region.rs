@@ -152,99 +152,128 @@ impl RegionRepository {
 
 #[cfg(test)]
 mod tests {
-    use time::OffsetDateTime;
-
-    use crate::configs::{Database, SchemaManager};
-    use crate::models::Group;
-    use crate::repositories::GroupRepository;
+    use crate::models::Role;
+    use crate::repositories::tests::*;
 
     use super::*;
-
-    async fn setup_test_db() -> Arc<Storage> {
-        Arc::new(
-            Storage::new(
-                Database {
-                    migration_path: None,
-                    clean_start: true,
-                    url: String::from("sqlite::memory:"),
-                },
-                SchemaManager::default(),
-            )
-            .await
-            .unwrap(),
-        )
-    }
-
-    async fn create_test_group(storage: Arc<Storage>) -> i32 {
-        let now = OffsetDateTime::now_utc();
-        let group = Group {
-            id: 0,
-            name: "Test Group".to_string(),
-            description: Some("A test group".to_string()),
-            created_at: now,
-        };
-
-        let group_repo = GroupRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let group_id = group_repo.create(&group, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        group_id
-    }
 
     #[tokio::test]
     async fn test_find_region_by_id() {
         let storage = setup_test_db().await;
-        let group_id = create_test_group(storage.clone()).await;
-
-        let region = Region {
-            id: 0,
-            group_id,
-            name: "Living Room".to_string(),
-            light: 500,
-            temperature: 22.5,
-            humidity: 45.0,
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 500, 22.5, 45.0).await;
 
         let repo = RegionRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&region, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(region.id).await.unwrap();
         assert!(found.is_some());
+
         let found_region = found.unwrap();
-        assert_eq!(found_region.name, "Living Room");
-        assert_eq!(found_region.light, 500);
-        assert_eq!(found_region.temperature, 22.5);
+        assert_eq!(found_region.name, region.name);
+        assert_eq!(found_region.light, region.light);
+        assert_eq!(found_region.temperature, region.temperature);
+        assert_eq!(found_region.humidity, region.humidity);
+    }
+
+    #[tokio::test]
+    async fn test_find_region_by_name() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 500, 22.5, 45.0).await;
+
+        let repo = RegionRepository::new(storage.clone());
+        let found = repo.find_by_name(&region.name).await.unwrap();
+        assert!(found.is_some());
+
+        let found_region = found.unwrap();
+        assert_eq!(found_region.group_id, group.id);
+        assert_eq!(found_region.name, region.name);
+        assert_eq!(found_region.light, region.light);
+        assert_eq!(found_region.temperature, region.temperature);
+        assert_eq!(found_region.humidity, region.humidity);
+    }
+
+    #[tokio::test]
+    async fn test_find_regions_by_group_id() {
+        let storage = setup_test_db().await;
+        let group1 = create_test_group(storage.clone(), "test_group_1").await;
+        let group2 = create_test_group(storage.clone(), "test_group_2").await;
+        let region1 =
+            create_test_region(storage.clone(), group1.id, "test_region_1", 400, 21.0, 40.0).await;
+        let region2 =
+            create_test_region(storage.clone(), group1.id, "test_region_2", 450, 22.0, 45.0).await;
+        let region3 =
+            create_test_region(storage.clone(), group2.id, "test_region_3", 500, 23.0, 50.0).await;
+
+        let repo = RegionRepository::new(storage.clone());
+
+        let found_group1_regions = repo.find_by_group_id(group1.id).await.unwrap();
+        assert_eq!(found_group1_regions.len(), 2);
+
+        let region_names: Vec<String> = found_group1_regions
+            .iter()
+            .map(|r| r.name.clone())
+            .collect();
+        assert!(region_names.contains(&region1.name));
+        assert!(region_names.contains(&region2.name));
+        assert!(!region_names.contains(&region3.name));
+
+        let found_group2_regions = repo.find_by_group_id(group2.id).await.unwrap();
+        assert_eq!(found_group2_regions.len(), 1);
+        assert_eq!(found_group2_regions[0].name, region3.name);
+
+        let non_existent_group_regions = repo.find_by_group_id(9999).await.unwrap();
+        assert!(non_existent_group_regions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_find_regions_by_user_id() {
+        let storage = setup_test_db().await;
+        let user = create_test_user(storage.clone(), "test@test.com", "test").await;
+        let group1 = create_test_group(storage.clone(), "test_group_1").await;
+        let group2 = create_test_group(storage.clone(), "test_group_2").await;
+        let group3 = create_test_group(storage.clone(), "test_group_3").await;
+        create_test_user_group(storage.clone(), user.id, group1.id, Role::Owner, true).await;
+        create_test_user_group(storage.clone(), user.id, group2.id, Role::Member, false).await;
+        let region1 =
+            create_test_region(storage.clone(), group1.id, "test_region_1", 400, 21.0, 40.0).await;
+        let region2 =
+            create_test_region(storage.clone(), group2.id, "test_region_2", 450, 22.0, 45.0).await;
+        let region3 =
+            create_test_region(storage.clone(), group3.id, "test_region_3", 500, 23.0, 50.0).await;
+        create_test_user_region(storage.clone(), user.id, region3.id).await;
+
+        let repo = RegionRepository::new(storage.clone());
+        let found_regions = repo.find_by_user_id(user.id).await.unwrap();
+
+        assert_eq!(found_regions.len(), 2);
+
+        let region_names: Vec<String> = found_regions.iter().map(|r| r.name.clone()).collect();
+        assert!(region_names.contains(&region1.name));
+        assert!(!region_names.contains(&region2.name));
+        assert!(region_names.contains(&region3.name));
+
+        let non_existent_user_regions = repo.find_by_user_id(9999).await.unwrap();
+        assert!(non_existent_user_regions.is_empty());
     }
 
     #[tokio::test]
     async fn test_update_environment_data() {
         let storage = setup_test_db().await;
-        let group_id = create_test_group(storage.clone()).await;
-
-        let region = Region {
-            id: 0,
-            group_id,
-            name: "Bedroom".to_string(),
-            light: 300,
-            temperature: 20.0,
-            humidity: 40.0,
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 300, 20.0, 40.0).await;
 
         let repo = RegionRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&region, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
 
         let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.update_environment_data(id, 350, 21.5, 42.5, &mut tx)
+        repo.update_environment_data(region.id, 350, 21.5, 42.5, &mut tx)
             .await
             .unwrap();
         tx.commit().await.unwrap();
 
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(region.id).await.unwrap();
         assert!(found.is_some());
         let found_region = found.unwrap();
         assert_eq!(found_region.light, 350);
@@ -255,27 +284,17 @@ mod tests {
     #[tokio::test]
     async fn test_delete_region() {
         let storage = setup_test_db().await;
-        let group_id = create_test_group(storage.clone()).await;
-
-        let region = Region {
-            id: 0,
-            group_id,
-            name: "Kitchen".to_string(),
-            light: 600,
-            temperature: 23.0,
-            humidity: 50.0,
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region =
+            create_test_region(storage.clone(), group.id, "test_region", 600, 23.0, 50.0).await;
 
         let repo = RegionRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&region, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
 
         let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.delete(id, &mut tx).await.unwrap();
+        repo.delete(region.id, &mut tx).await.unwrap();
         tx.commit().await.unwrap();
 
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(region.id).await.unwrap();
         assert!(found.is_none());
     }
 }

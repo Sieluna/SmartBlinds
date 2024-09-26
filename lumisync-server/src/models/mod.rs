@@ -1,28 +1,24 @@
+mod device;
+mod device_record;
+mod device_setting;
 mod event;
 mod group;
 mod region;
 mod region_setting;
-mod sensor;
-mod sensor_record;
 mod user;
 mod user_group;
 mod user_region;
-mod window;
-mod window_record;
-mod window_setting;
 
+pub use device::{Device, DeviceTable};
+pub use device_record::{DeviceRecord, DeviceRecordTable};
+pub use device_setting::{DeviceSetting, DeviceSettingTable};
 pub use event::{Event, EventTable};
 pub use group::{Group, GroupTable};
 pub use region::{Region, RegionTable};
 pub use region_setting::{RegionSetting, RegionSettingTable};
-pub use sensor::{Sensor, SensorTable};
-pub use sensor_record::{SensorRecord, SensorRecordTable};
 pub use user::{User, UserTable};
 pub use user_group::{UserGroup, UserGroupTable};
 pub use user_region::{UserRegion, UserRegionTable};
-pub use window::{Window, WindowTable};
-pub use window_record::{WindowRecord, WindowRecordTable};
-pub use window_setting::{WindowSetting, WindowSettingTable};
 
 use std::fmt;
 

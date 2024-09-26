@@ -106,120 +106,73 @@ impl UserRepository {
 
 #[cfg(test)]
 mod tests {
-    use crate::configs::{Database, SchemaManager};
+    use crate::repositories::tests::*;
 
     use super::*;
-
-    async fn setup_test_db() -> Arc<Storage> {
-        Arc::new(
-            Storage::new(
-                Database {
-                    migration_path: None,
-                    clean_start: true,
-                    url: String::from("sqlite::memory:"),
-                },
-                SchemaManager::default(),
-            )
-            .await
-            .unwrap(),
-        )
-    }
 
     #[tokio::test]
     async fn test_find_user_by_id() {
         let storage = setup_test_db().await;
-
-        let user = User {
-            id: 0,
-            email: "test@example.com".to_string(),
-            password: "hashed_password".to_string(),
-        };
+        let user = create_test_user(storage.clone(), "test@test.com", "test").await;
 
         let repo = UserRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&user, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(user.id).await.unwrap();
         assert!(found.is_some());
+
         let found_user = found.unwrap();
-        assert_eq!(found_user.email, "test@example.com");
-        assert_eq!(found_user.password, "hashed_password");
+        assert_eq!(found_user.email, user.email);
+        assert_eq!(found_user.password, user.password);
     }
 
     #[tokio::test]
     async fn test_find_user_by_email() {
         let storage = setup_test_db().await;
-
-        let user = User {
-            id: 0,
-            email: "findme@example.com".to_string(),
-            password: "secret123".to_string(),
-        };
+        let user = create_test_user(storage.clone(), "test@test.com", "test").await;
 
         let repo = UserRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.create(&user, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let found = repo.find_by_email("findme@example.com").await.unwrap();
+        let found = repo.find_by_email(&user.email).await.unwrap();
         assert!(found.is_some());
+
         let found_user = found.unwrap();
-        assert_eq!(found_user.email, "findme@example.com");
+        assert_eq!(found_user.email, user.email);
     }
 
     #[tokio::test]
     async fn test_update_user() {
         let storage = setup_test_db().await;
-
-        let user = User {
-            id: 0,
-            email: "original@example.com".to_string(),
-            password: "original_password".to_string(),
-        };
+        let user = create_test_user(storage.clone(), "test@test.com", "test").await;
 
         let repo = UserRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&user, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
         let updated_user = User {
-            id,
-            email: "updated@example.com".to_string(),
-            password: "updated_password".to_string(),
+            id: user.id,
+            email: "updated@test.com".to_string(),
+            password: "updated_test".to_string(),
         };
 
         let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.update(id, &updated_user, &mut tx).await.unwrap();
+        repo.update(user.id, &updated_user, &mut tx).await.unwrap();
         tx.commit().await.unwrap();
 
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(user.id).await.unwrap();
         assert!(found.is_some());
+
         let found_user = found.unwrap();
-        assert_eq!(found_user.email, "updated@example.com");
-        assert_eq!(found_user.password, "updated_password");
+        assert_eq!(found_user.email, updated_user.email);
+        assert_eq!(found_user.password, updated_user.password);
     }
 
     #[tokio::test]
     async fn test_delete_user() {
         let storage = setup_test_db().await;
-
-        let user = User {
-            id: 0,
-            email: "delete_me@example.com".to_string(),
-            password: "delete_password".to_string(),
-        };
+        let user = create_test_user(storage.clone(), "test@test.com", "test").await;
 
         let repo = UserRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&user, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
 
         let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.delete(id, &mut tx).await.unwrap();
+        repo.delete(user.id, &mut tx).await.unwrap();
         tx.commit().await.unwrap();
 
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(user.id).await.unwrap();
         assert!(found.is_none());
     }
 }

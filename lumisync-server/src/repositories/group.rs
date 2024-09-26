@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use sqlx::{Error, Sqlite, Transaction};
 
 use crate::configs::Storage;
-use crate::models::Group;
+use crate::models::{Group, Role};
 
 pub struct GroupRepository {
     storage: Arc<Storage>,
@@ -37,30 +38,58 @@ impl GroupRepository {
         Ok(id as i32)
     }
 
+    pub async fn create_with_user(
+        &self,
+        item: &Group,
+        user_groups: HashMap<i32, Role>,
+        transaction: &mut Transaction<'_, Sqlite>,
+    ) -> Result<i32, Error> {
+        let group_id = sqlx::query(
+            r#"
+            INSERT INTO groups (name, description, created_at)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(&item.name)
+        .bind(&item.description)
+        .bind(item.created_at)
+        .execute(&mut **transaction)
+        .await?
+        .last_insert_rowid();
+
+        for (user_id, role) in user_groups {
+            sqlx::query(
+                r#"
+                INSERT INTO users_groups_link (user_id, group_id, role)
+                VALUES ($1, $2, $3)
+                "#,
+            )
+            .bind(user_id)
+            .bind(group_id)
+            .bind(role.to_string())
+            .execute(&mut **transaction)
+            .await?;
+        }
+
+        Ok(group_id as i32)
+    }
+
     pub async fn find_by_id(&self, id: i32) -> Result<Option<Group>, Error> {
         let group: Option<Group> = sqlx::query_as("SELECT * FROM groups WHERE id = $1")
-            .bind(id)
-            .fetch_optional(self.storage.get_pool())
-            .await?;
+        .bind(id)
+        .fetch_optional(self.storage.get_pool())
+        .await?;
 
         Ok(group)
     }
 
     pub async fn find_by_name(&self, name: &str) -> Result<Option<Group>, Error> {
         let group: Option<Group> = sqlx::query_as("SELECT * FROM groups WHERE name = $1")
-            .bind(name)
-            .fetch_optional(self.storage.get_pool())
-            .await?;
+        .bind(name)
+        .fetch_optional(self.storage.get_pool())
+        .await?;
 
         Ok(group)
-    }
-
-    pub async fn find_all(&self) -> Result<Vec<Group>, Error> {
-        let groups: Vec<Group> = sqlx::query_as("SELECT * FROM groups")
-            .fetch_all(self.storage.get_pool())
-            .await?;
-
-        Ok(groups)
     }
 
     pub async fn find_by_user_id(&self, user_id: i32) -> Result<Vec<Group>, Error> {
@@ -72,6 +101,14 @@ impl GroupRepository {
             "#,
         )
         .bind(user_id)
+        .fetch_all(self.storage.get_pool())
+        .await?;
+
+        Ok(groups)
+    }
+
+    pub async fn find_all(&self) -> Result<Vec<Group>, Error> {
+        let groups: Vec<Group> = sqlx::query_as("SELECT * FROM groups")
         .fetch_all(self.storage.get_pool())
         .await?;
 
@@ -106,9 +143,9 @@ impl GroupRepository {
         transaction: &mut Transaction<'_, Sqlite>,
     ) -> Result<(), Error> {
         sqlx::query("DELETE FROM groups WHERE id = $1")
-            .bind(id)
-            .execute(&mut **transaction)
-            .await?;
+        .bind(id)
+        .execute(&mut **transaction)
+        .await?;
 
         Ok(())
     }
@@ -116,134 +153,91 @@ impl GroupRepository {
 
 #[cfg(test)]
 mod tests {
-    use time::OffsetDateTime;
-
-    use crate::configs::{Database, SchemaManager};
+    use crate::repositories::tests::*;
 
     use super::*;
-
-    async fn setup_test_db() -> Arc<Storage> {
-        Arc::new(
-            Storage::new(
-                Database {
-                    migration_path: None,
-                    clean_start: true,
-                    url: String::from("sqlite::memory:"),
-                },
-                SchemaManager::default(),
-            )
-            .await
-            .unwrap(),
-        )
-    }
 
     #[tokio::test]
     async fn test_find_group_by_id() {
         let storage = setup_test_db().await;
-
-        let now = OffsetDateTime::now_utc();
-        let group = Group {
-            id: 0,
-            name: "Test Group".to_string(),
-            description: Some("A test group".to_string()),
-            created_at: now,
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
 
         let repo = GroupRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&group, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(group.id).await.unwrap();
         assert!(found.is_some());
+
         let found_group = found.unwrap();
-        assert_eq!(found_group.name, "Test Group");
-        assert_eq!(found_group.description, Some("A test group".to_string()));
+        assert_eq!(found_group.name, group.name);
     }
 
     #[tokio::test]
     async fn test_find_group_by_name() {
         let storage = setup_test_db().await;
-
-        let now = OffsetDateTime::now_utc();
-        let group = Group {
-            id: 0,
-            name: "Named Group".to_string(),
-            description: None,
-            created_at: now,
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
 
         let repo = GroupRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.create(&group, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let found = repo.find_by_name("Named Group").await.unwrap();
+        let found = repo.find_by_name(&group.name).await.unwrap();
         assert!(found.is_some());
+
         let found_group = found.unwrap();
-        assert_eq!(found_group.name, "Named Group");
+        assert_eq!(found_group.name, group.name);
+    }
+
+    #[tokio::test]
+    async fn test_find_by_user_id() {
+        let storage = setup_test_db().await;
+        let user = create_test_user(storage.clone(), "test@test.com", "test").await;
+        let group1 = create_test_group(storage.clone(), "test_group_1").await;
+        let group2 = create_test_group(storage.clone(), "test_group_2").await;
+        create_test_user_group(storage.clone(), user.id, group1.id, Role::Owner, true).await;
+        create_test_user_group(storage.clone(), user.id, group2.id, Role::Member, false).await;
+
+        let repo = GroupRepository::new(storage.clone());
+        let found_groups = repo.find_by_user_id(user.id).await.unwrap();
+        assert_eq!(found_groups.len(), 1);
+
+        let group_names: Vec<String> = found_groups.iter().map(|g| g.name.clone()).collect();
+        assert!(group_names.contains(&group1.name));
+        assert!(!group_names.contains(&group2.name));
     }
 
     #[tokio::test]
     async fn test_update_group() {
         let storage = setup_test_db().await;
-
-        let now = OffsetDateTime::now_utc();
-        let group = Group {
-            id: 0,
-            name: "Original Name".to_string(),
-            description: None,
-            created_at: now,
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
 
         let repo = GroupRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&group, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let updated_group = Group {
-            id,
-            name: "Updated Name".to_string(),
-            description: Some("Added description".to_string()),
-            created_at: now,
+        let updated = Group {
+            id: group.id,
+            name: "updated_group".into(),
+            description: Some("added_description".into()),
+            created_at: group.created_at,
         };
 
         let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.update(id, &updated_group, &mut tx).await.unwrap();
+        repo.update(group.id, &updated, &mut tx).await.unwrap();
         tx.commit().await.unwrap();
 
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(group.id).await.unwrap();
         assert!(found.is_some());
+
         let found_group = found.unwrap();
-        assert_eq!(found_group.name, "Updated Name");
-        assert_eq!(
-            found_group.description,
-            Some("Added description".to_string())
-        );
+        assert_eq!(found_group.name, updated.name);
+        assert_eq!(found_group.description, updated.description);
     }
 
     #[tokio::test]
     async fn test_delete_group() {
         let storage = setup_test_db().await;
-
-        let now = OffsetDateTime::now_utc();
-        let group = Group {
-            id: 0,
-            name: "To Delete".to_string(),
-            description: None,
-            created_at: now,
-        };
+        let group = create_test_group(storage.clone(), "test_group").await;
 
         let repo = GroupRepository::new(storage.clone());
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        let id = repo.create(&group, &mut tx).await.unwrap();
-        tx.commit().await.unwrap();
 
         let mut tx = storage.get_pool().begin().await.unwrap();
-        repo.delete(id, &mut tx).await.unwrap();
+        repo.delete(group.id, &mut tx).await.unwrap();
         tx.commit().await.unwrap();
 
-        let found = repo.find_by_id(id).await.unwrap();
+        let found = repo.find_by_id(group.id).await.unwrap();
         assert!(found.is_none());
     }
 }
