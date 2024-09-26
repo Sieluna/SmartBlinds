@@ -152,7 +152,8 @@ impl RegionRepository {
 
 #[cfg(test)]
 mod tests {
-    use crate::models::Role;
+    use lumisync_api::restful::Role;
+
     use crate::repositories::tests::*;
 
     use super::*;

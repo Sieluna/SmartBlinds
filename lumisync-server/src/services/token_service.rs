@@ -3,10 +3,11 @@ use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
+use lumisync_api::restful::Role;
 use serde::{Deserialize, Serialize};
 
 use crate::configs::Auth;
-use crate::models::{Role, User};
+use crate::models::User;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {

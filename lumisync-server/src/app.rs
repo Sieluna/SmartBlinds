@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::routing::{get, post};
 use axum::{middleware, Router};
+use lumisync_api::restful;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
@@ -10,6 +11,75 @@ use crate::configs::{SchemaManager, Settings, Storage};
 use crate::handles::*;
 use crate::middlewares::{auth, TokenState};
 use crate::services::{AuthService, MessageService, TokenService};
+
+fn openapi() -> Router {
+    use utoipa::OpenApi;
+
+    #[derive(OpenApi)]
+    #[openapi(
+        paths(
+        ),
+        components(
+            schemas(
+                restful::Role,
+                restful::LoginRequest,
+                restful::RegisterRequest,
+                restful::UserResponse,
+                restful::CreateGroupRequest,
+                restful::GroupResponse,
+                restful::CreateRegionRequest,
+                restful::RegionInfoResponse,
+                restful::RegionResponse,
+                restful::CreateDeviceRequest,
+                restful::UpdateDeviceRequest,
+                restful::DeviceRecordResponse,
+                restful::DeviceSettingResponse,
+                restful::DeviceInfoResponse,
+                restful::DeviceResponse,
+            )
+        ),
+        tags(
+            (name = "auth", description = "Authentication related endpoints"),
+            (name = "user", description = "User related endpoints"),
+            (name = "notebook", description = "Notebook related endpoints")
+        )
+    )]
+    struct ApiDoc;
+
+    const OPENAPI_ENDPOINT: &str = "/openapi.json";
+
+    Router::new()
+        .route(OPENAPI_ENDPOINT, get(||async { Json(ApiDoc::openapi()) }))
+        .route("/", get(|| async {
+            Html(format!(
+                r#"
+                <!doctype html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <script type="module" src="https://unpkg.com/rapidoc/dist/rapidoc-min.js"></script>
+                </head>
+                <body>
+                    <rapi-doc
+                        spec-url="{}"
+                        theme="light"
+                        show-header="false"
+                    ></rapi-doc>
+                </body>
+                </html>
+                "#,
+                OPENAPI_ENDPOINT
+            ))
+        }))
+}
+
+async fn health_check() -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "ok",
+        "version": env!("CARGO_PKG_VERSION"),
+        "timestamp": time::OffsetDateTime::now_utc().to_string()
+    }))
+}
 
 pub async fn create_app(settings: &Arc<Settings>) -> Router {
     let (sender, _receiver) = broadcast::channel(100);

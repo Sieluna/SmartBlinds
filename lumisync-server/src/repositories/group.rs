@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use lumisync_api::restful::Role;
 use sqlx::{Error, Sqlite, Transaction};
 
 use crate::configs::Storage;
-use crate::models::{Group, Role};
+use crate::models::Group;
 
 pub struct GroupRepository {
     storage: Arc<Storage>,

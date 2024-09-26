@@ -1,24 +1,20 @@
+mod device;
 mod event;
 mod group;
 mod region;
-mod sensor;
-mod sensor_record;
 mod user;
-mod window;
-mod window_record;
 
+pub use device::DeviceRepository;
 pub use event::EventRepository;
 pub use group::GroupRepository;
 pub use region::RegionRepository;
-pub use sensor::SensorRepository;
-pub use sensor_record::SensorRecordRepository;
 pub use user::UserRepository;
-pub use window::WindowRepository;
-pub use window_record::WindowRecordRepository;
 
 #[cfg(test)]
 pub mod tests {
     use std::sync::Arc;
+
+    use lumisync_api::restful::Role;
 
     use crate::configs::{Database, SchemaManager, Storage};
     use crate::models::*;
@@ -122,16 +118,26 @@ pub mod tests {
         .unwrap()
     }
 
-    pub async fn create_test_sensor(storage: Arc<Storage>, region_id: i32, name: &str) -> Sensor {
+    pub async fn create_test_device(
+        storage: Arc<Storage>, 
+        region_id: i32, 
+        name: &str,
+        device_type: &str
+    ) -> Device {
+        use serde_json::json;
+        
         sqlx::query_as(
             r#"
-            INSERT INTO sensors (region_id, name)
-            VALUES ($1, $2)
+            INSERT INTO devices (region_id, name, device_type, location, status)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING *;
             "#,
         )
         .bind(region_id)
         .bind(name)
+        .bind(device_type)
+        .bind(json!({"x": 0, "y": 0}))
+        .bind(0.0)
         .fetch_one(storage.get_pool())
         .await
         .unwrap()

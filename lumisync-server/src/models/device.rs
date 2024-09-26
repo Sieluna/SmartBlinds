@@ -28,6 +28,7 @@ impl Table for DeviceTable {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 region_id INTEGER NOT NULL,
                 name VARCHAR(255) NOT NULL UNIQUE,
+                device_type INTEGER NOT NULL,
                 location JSON,
                 status JSON,
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE
