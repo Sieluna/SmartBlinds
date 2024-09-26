@@ -1,6 +1,5 @@
 pub mod auth;
 pub mod control;
+pub mod device;
+pub mod group;
 pub mod region;
-pub mod sensor;
-pub mod setting;
-pub mod window;

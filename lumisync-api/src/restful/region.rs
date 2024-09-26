@@ -1,33 +1,33 @@
 use serde::{Deserialize, Serialize};
 
+use super::device::DeviceInfoResponse;
+
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateRegionRequest {
-    /// Users who allowed to manage this region.
-    pub users: Vec<i32>,
-    /// Name of region.
     pub name: String,
 }
 
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateRegionRequest {
-    /// Update name of region.
+pub struct UpdateRegionSettingRequest {
     pub name: Option<String>,
-    /// Update light intensity of region.
-    pub light: Option<i32>,
-    /// Update temperature of region.
-    pub temperature: Option<f32>,
 }
 
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegionInfoResponse {
+    pub id: i32,
+    pub group_id: i32,
+    pub name: String,
+}
+
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegionResponse {
-    /// The id of region.
-    pub id: i32,
-    /// The group this region belongs to.
-    pub group_id: i32,
-    /// Name of region.
-    pub name: String,
-    /// Light intensity of region.
+    #[serde(flatten)]
+    pub info: RegionInfoResponse,
     pub light: i32,
-    /// Temperature of region.
     pub temperature: f32,
+    pub devices: Vec<DeviceInfoResponse>,
 }
