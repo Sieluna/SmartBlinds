@@ -3,12 +3,11 @@ use time::OffsetDateTime;
 
 use super::Table;
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserGroup {
     pub id: i32,
     pub user_id: i32,
     pub group_id: i32,
-    pub role: String,
     pub joined_at: OffsetDateTime,
     pub is_active: bool,
 }
@@ -28,7 +27,6 @@ impl Table for UserGroupTable {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 group_id INTEGER NOT NULL,
-                role VARCHAR(50) NOT NULL DEFAULT 'member',
                 joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,

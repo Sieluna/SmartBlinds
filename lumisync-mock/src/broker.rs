@@ -18,9 +18,15 @@ pub struct MockBroker {
 impl MockBroker {
     pub fn new(source: &Arc<Source>) -> Result<Self, Box<dyn Error>> {
         let (host, port, tls_config) = match source.as_ref() {
-            Source::MQTT { host, port, auth, .. } => {
+            Source::MQTT {
+                host, port, auth, ..
+            } => {
                 let tls_config = auth.as_ref().and_then(|auth| {
-                    if let MqttAuth::TLSAuth { cert_path, key_path } = auth {
+                    if let MqttAuth::TLSAuth {
+                        cert_path,
+                        key_path,
+                    } = auth
+                    {
                         Some(TlsConfig::Rustls {
                             capath: None,
                             certpath: cert_path.clone(),

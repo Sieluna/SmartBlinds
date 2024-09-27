@@ -1,20 +1,28 @@
 mod device;
+mod device_record;
+mod device_setting;
 mod event;
 mod group;
 mod region;
+mod region_setting;
 mod user;
+mod user_region;
 
 pub use device::DeviceRepository;
+pub use device_record::DeviceRecordRepository;
+pub use device_setting::DeviceSettingRepository;
 pub use event::EventRepository;
 pub use group::GroupRepository;
 pub use region::RegionRepository;
+pub use region_setting::RegionSettingRepository;
 pub use user::UserRepository;
+pub use user_region::UserRegionRepository;
 
 #[cfg(test)]
 pub mod tests {
     use std::sync::Arc;
 
-    use lumisync_api::restful::Role;
+    use serde_json::Value;
 
     use crate::configs::{Database, SchemaManager, Storage};
     use crate::models::*;
@@ -34,10 +42,18 @@ pub mod tests {
         )
     }
 
-    pub async fn create_test_user(storage: Arc<Storage>, email: &str, password: &str) -> User {
-        sqlx::query_as("INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *;")
+    pub async fn create_test_user(
+        storage: Arc<Storage>,
+        email: &str,
+        password: &str,
+        is_admin: bool,
+    ) -> User {
+        let role = if is_admin { "admin" } else { "user" };
+
+        sqlx::query_as("INSERT INTO users (email, password, role) VALUES ($1, $2, $3) RETURNING *;")
             .bind(email)
             .bind(password)
+            .bind(role)
             .fetch_one(storage.get_pool())
             .await
             .unwrap()
@@ -55,19 +71,17 @@ pub mod tests {
         storage: Arc<Storage>,
         user_id: i32,
         group_id: i32,
-        role: Role,
         active: bool,
     ) -> UserGroup {
         sqlx::query_as(
             r#"
-            INSERT INTO users_groups_link (user_id, group_id, role, is_active)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO users_groups_link (user_id, group_id, is_active)
+            VALUES ($1, $2, $3)
             RETURNING *;
             "#,
         )
         .bind(user_id)
         .bind(group_id)
-        .bind(role.to_string())
         .bind(active)
         .fetch_one(storage.get_pool())
         .await
@@ -81,11 +95,12 @@ pub mod tests {
         light: i32,
         temperature: f32,
         humidity: f32,
+        is_public: bool,
     ) -> Region {
         sqlx::query_as(
             r#"
-            INSERT INTO regions (group_id, name, light, temperature, humidity)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO regions (group_id, name, light, temperature, humidity, is_public)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *;
             "#,
         )
@@ -94,6 +109,7 @@ pub mod tests {
         .bind(light)
         .bind(temperature)
         .bind(humidity)
+        .bind(is_public)
         .fetch_one(storage.get_pool())
         .await
         .unwrap()
@@ -103,29 +119,32 @@ pub mod tests {
         storage: Arc<Storage>,
         user_id: i32,
         region_id: i32,
+        role: &str,
     ) -> UserRegion {
         sqlx::query_as(
             r#"
-            INSERT INTO users_regions_link (user_id, region_id)
-            VALUES ($1, $2)
+            INSERT INTO users_regions_link (user_id, region_id, role)
+            VALUES ($1, $2, $3)
             RETURNING *;
             "#,
         )
         .bind(user_id)
         .bind(region_id)
+        .bind(role)
         .fetch_one(storage.get_pool())
         .await
         .unwrap()
     }
 
     pub async fn create_test_device(
-        storage: Arc<Storage>, 
-        region_id: i32, 
+        storage: Arc<Storage>,
+        region_id: i32,
         name: &str,
-        device_type: &str
+        device_type: i32,
+        status: Value,
     ) -> Device {
         use serde_json::json;
-        
+
         sqlx::query_as(
             r#"
             INSERT INTO devices (region_id, name, device_type, location, status)
@@ -137,7 +156,7 @@ pub mod tests {
         .bind(name)
         .bind(device_type)
         .bind(json!({"x": 0, "y": 0}))
-        .bind(0.0)
+        .bind(status)
         .fetch_one(storage.get_pool())
         .await
         .unwrap()

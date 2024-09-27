@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Table;
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Region {
     pub id: i32,
     pub group_id: i32,
@@ -14,6 +14,8 @@ pub struct Region {
     pub temperature: f32,
     /// Humidity is the global humidity in room, average of sensors in region.
     pub humidity: f32,
+    /// Whether the region is publicly accessible
+    pub is_public: bool,
 }
 
 #[derive(Clone)]
@@ -34,6 +36,7 @@ impl Table for RegionTable {
                 light INTEGER NOT NULL,
                 temperature REAL NOT NULL,
                 humidity REAL NOT NULL,
+                is_public BOOLEAN NOT NULL DEFAULT TRUE,
                 FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE
             );
             "#,

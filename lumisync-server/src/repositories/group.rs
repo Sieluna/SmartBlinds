@@ -1,12 +1,11 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use lumisync_api::restful::Role;
-use sqlx::{Error, Sqlite, Transaction};
+use sqlx::{Error, Pool, Sqlite, Transaction};
 
 use crate::configs::Storage;
 use crate::models::Group;
 
+#[derive(Clone)]
 pub struct GroupRepository {
     storage: Arc<Storage>,
 }
@@ -14,6 +13,10 @@ pub struct GroupRepository {
 impl GroupRepository {
     pub fn new(storage: Arc<Storage>) -> Self {
         Self { storage }
+    }
+
+    pub fn get_pool(&self) -> &Pool<Sqlite> {
+        self.storage.get_pool()
     }
 }
 
@@ -42,7 +45,7 @@ impl GroupRepository {
     pub async fn create_with_user(
         &self,
         item: &Group,
-        user_groups: HashMap<i32, Role>,
+        user_ids: Vec<i32>,
         transaction: &mut Transaction<'_, Sqlite>,
     ) -> Result<i32, Error> {
         let group_id = sqlx::query(
@@ -58,16 +61,15 @@ impl GroupRepository {
         .await?
         .last_insert_rowid();
 
-        for (user_id, role) in user_groups {
+        for user_id in user_ids {
             sqlx::query(
                 r#"
-                INSERT INTO users_groups_link (user_id, group_id, role)
-                VALUES ($1, $2, $3)
+                INSERT INTO users_groups_link (user_id, group_id)
+                VALUES ($1, $2)
                 "#,
             )
             .bind(user_id)
             .bind(group_id)
-            .bind(role.to_string())
             .execute(&mut **transaction)
             .await?;
         }
@@ -77,18 +79,18 @@ impl GroupRepository {
 
     pub async fn find_by_id(&self, id: i32) -> Result<Option<Group>, Error> {
         let group: Option<Group> = sqlx::query_as("SELECT * FROM groups WHERE id = $1")
-        .bind(id)
-        .fetch_optional(self.storage.get_pool())
-        .await?;
+            .bind(id)
+            .fetch_optional(self.storage.get_pool())
+            .await?;
 
         Ok(group)
     }
 
     pub async fn find_by_name(&self, name: &str) -> Result<Option<Group>, Error> {
         let group: Option<Group> = sqlx::query_as("SELECT * FROM groups WHERE name = $1")
-        .bind(name)
-        .fetch_optional(self.storage.get_pool())
-        .await?;
+            .bind(name)
+            .fetch_optional(self.storage.get_pool())
+            .await?;
 
         Ok(group)
     }
@@ -110,8 +112,8 @@ impl GroupRepository {
 
     pub async fn find_all(&self) -> Result<Vec<Group>, Error> {
         let groups: Vec<Group> = sqlx::query_as("SELECT * FROM groups")
-        .fetch_all(self.storage.get_pool())
-        .await?;
+            .fetch_all(self.storage.get_pool())
+            .await?;
 
         Ok(groups)
     }
@@ -144,9 +146,9 @@ impl GroupRepository {
         transaction: &mut Transaction<'_, Sqlite>,
     ) -> Result<(), Error> {
         sqlx::query("DELETE FROM groups WHERE id = $1")
-        .bind(id)
-        .execute(&mut **transaction)
-        .await?;
+            .bind(id)
+            .execute(&mut **transaction)
+            .await?;
 
         Ok(())
     }
@@ -154,6 +156,8 @@ impl GroupRepository {
 
 #[cfg(test)]
 mod tests {
+    use lumisync_api::UserRole;
+
     use crate::repositories::tests::*;
 
     use super::*;
@@ -187,11 +191,11 @@ mod tests {
     #[tokio::test]
     async fn test_find_by_user_id() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test").await;
+        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
         let group1 = create_test_group(storage.clone(), "test_group_1").await;
         let group2 = create_test_group(storage.clone(), "test_group_2").await;
-        create_test_user_group(storage.clone(), user.id, group1.id, Role::Owner, true).await;
-        create_test_user_group(storage.clone(), user.id, group2.id, Role::Member, false).await;
+        create_test_user_group(storage.clone(), user.id, group1.id, true).await;
+        create_test_user_group(storage.clone(), user.id, group2.id, false).await;
 
         let repo = GroupRepository::new(storage.clone());
         let found_groups = repo.find_by_user_id(user.id).await.unwrap();

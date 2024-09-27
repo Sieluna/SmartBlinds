@@ -11,21 +11,21 @@ axum-extra = { version = "0.9", features = ["typed-header"] }
 futures = "0.3"
 jsonwebtoken = "9"
 lumisync_analyser.workspace = true
-lumisync_api.workspace = true
+lumisync_api = { workspace = true, features = ["docs"] }
 reqwest = { version = "0.12", features = ["json"] }
 rumqttc = "0.24"
 rustls-native-certs = "0.8"
 rustls-pemfile = "2"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-serialport = "4"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time"] }
 time = { workspace = true, features = ["serde"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 toml.workspace = true
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+utoipa.workspace = true
 uuid = { workspace = true, features = ["v4", "serde"] }

@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 
 use super::Table;
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct RegionSetting {
     pub id: i32,
     pub region_id: i32,

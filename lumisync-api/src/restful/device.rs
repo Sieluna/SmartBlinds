@@ -15,6 +15,7 @@ pub struct CreateDeviceRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateDeviceRequest {
     pub name: Option<String>,
+    pub device_type: Option<i32>,
     pub location: Option<Value>,
 }
 

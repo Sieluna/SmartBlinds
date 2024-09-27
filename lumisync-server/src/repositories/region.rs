@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use sqlx::{Error, Sqlite, Transaction};
+use sqlx::{Error, Pool, Sqlite, Transaction};
 
 use crate::configs::Storage;
 use crate::models::Region;
 
+#[derive(Clone)]
 pub struct RegionRepository {
     storage: Arc<Storage>,
 }
@@ -12,6 +13,10 @@ pub struct RegionRepository {
 impl RegionRepository {
     pub fn new(storage: Arc<Storage>) -> Self {
         Self { storage }
+    }
+
+    pub fn get_pool(&self) -> &Pool<Sqlite> {
+        self.storage.get_pool()
     }
 }
 
@@ -23,8 +28,8 @@ impl RegionRepository {
     ) -> Result<i32, Error> {
         let id = sqlx::query(
             r#"
-            INSERT INTO regions (group_id, name, light, temperature, humidity)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO regions (group_id, name, light, temperature, humidity, is_public)
+            VALUES ($1, $2, $3, $4, $5, $6)
             "#,
         )
         .bind(item.group_id)
@@ -32,6 +37,7 @@ impl RegionRepository {
         .bind(item.light)
         .bind(item.temperature)
         .bind(item.humidity)
+        .bind(item.is_public)
         .execute(&mut **transaction)
         .await?
         .last_insert_rowid();
@@ -95,8 +101,8 @@ impl RegionRepository {
         sqlx::query(
             r#"
             UPDATE regions
-            SET name = $1, group_id = $2, light = $3, temperature = $4, humidity = $5
-            WHERE id = $6
+            SET name = $1, group_id = $2, light = $3, temperature = $4, humidity = $5, is_public = $6
+            WHERE id = $7
             "#,
         )
         .bind(&item.name)
@@ -104,6 +110,7 @@ impl RegionRepository {
         .bind(item.light)
         .bind(item.temperature)
         .bind(item.humidity)
+        .bind(item.is_public)
         .bind(id)
         .execute(&mut **transaction)
         .await?;
@@ -136,6 +143,27 @@ impl RegionRepository {
         Ok(())
     }
 
+    pub async fn update_visibility(
+        &self,
+        id: i32,
+        is_public: bool,
+        transaction: &mut Transaction<'_, Sqlite>,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            UPDATE regions
+            SET is_public = $1
+            WHERE id = $2
+            "#,
+        )
+        .bind(is_public)
+        .bind(id)
+        .execute(&mut **transaction)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn delete(
         &self,
         id: i32,
@@ -152,7 +180,7 @@ impl RegionRepository {
 
 #[cfg(test)]
 mod tests {
-    use lumisync_api::restful::Role;
+    use lumisync_api::UserRole;
 
     use crate::repositories::tests::*;
 
@@ -162,8 +190,16 @@ mod tests {
     async fn test_find_region_by_id() {
         let storage = setup_test_db().await;
         let group = create_test_group(storage.clone(), "test_group").await;
-        let region =
-            create_test_region(storage.clone(), group.id, "test_region", 500, 22.5, 45.0).await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
 
         let repo = RegionRepository::new(storage.clone());
         let found = repo.find_by_id(region.id).await.unwrap();
@@ -180,8 +216,16 @@ mod tests {
     async fn test_find_region_by_name() {
         let storage = setup_test_db().await;
         let group = create_test_group(storage.clone(), "test_group").await;
-        let region =
-            create_test_region(storage.clone(), group.id, "test_region", 500, 22.5, 45.0).await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
 
         let repo = RegionRepository::new(storage.clone());
         let found = repo.find_by_name(&region.name).await.unwrap();
@@ -200,12 +244,36 @@ mod tests {
         let storage = setup_test_db().await;
         let group1 = create_test_group(storage.clone(), "test_group_1").await;
         let group2 = create_test_group(storage.clone(), "test_group_2").await;
-        let region1 =
-            create_test_region(storage.clone(), group1.id, "test_region_1", 400, 21.0, 40.0).await;
-        let region2 =
-            create_test_region(storage.clone(), group1.id, "test_region_2", 450, 22.0, 45.0).await;
-        let region3 =
-            create_test_region(storage.clone(), group2.id, "test_region_3", 500, 23.0, 50.0).await;
+        let region1 = create_test_region(
+            storage.clone(),
+            group1.id,
+            "test_region_1",
+            400,
+            21.0,
+            40.0,
+            false,
+        )
+        .await;
+        let region2 = create_test_region(
+            storage.clone(),
+            group1.id,
+            "test_region_2",
+            450,
+            22.0,
+            45.0,
+            false,
+        )
+        .await;
+        let region3 = create_test_region(
+            storage.clone(),
+            group2.id,
+            "test_region_3",
+            500,
+            23.0,
+            50.0,
+            false,
+        )
+        .await;
 
         let repo = RegionRepository::new(storage.clone());
 
@@ -231,19 +299,43 @@ mod tests {
     #[tokio::test]
     async fn test_find_regions_by_user_id() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test").await;
+        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
         let group1 = create_test_group(storage.clone(), "test_group_1").await;
         let group2 = create_test_group(storage.clone(), "test_group_2").await;
         let group3 = create_test_group(storage.clone(), "test_group_3").await;
-        create_test_user_group(storage.clone(), user.id, group1.id, Role::Owner, true).await;
-        create_test_user_group(storage.clone(), user.id, group2.id, Role::Member, false).await;
-        let region1 =
-            create_test_region(storage.clone(), group1.id, "test_region_1", 400, 21.0, 40.0).await;
-        let region2 =
-            create_test_region(storage.clone(), group2.id, "test_region_2", 450, 22.0, 45.0).await;
-        let region3 =
-            create_test_region(storage.clone(), group3.id, "test_region_3", 500, 23.0, 50.0).await;
-        create_test_user_region(storage.clone(), user.id, region3.id).await;
+        create_test_user_group(storage.clone(), user.id, group1.id, true).await;
+        create_test_user_group(storage.clone(), user.id, group2.id, false).await;
+        let region1 = create_test_region(
+            storage.clone(),
+            group1.id,
+            "test_region_1",
+            400,
+            21.0,
+            40.0,
+            false,
+        )
+        .await;
+        let region2 = create_test_region(
+            storage.clone(),
+            group2.id,
+            "test_region_2",
+            450,
+            22.0,
+            45.0,
+            false,
+        )
+        .await;
+        let region3 = create_test_region(
+            storage.clone(),
+            group3.id,
+            "test_region_3",
+            500,
+            23.0,
+            50.0,
+            false,
+        )
+        .await;
+        create_test_user_region(storage.clone(), user.id, region3.id, "admin").await;
 
         let repo = RegionRepository::new(storage.clone());
         let found_regions = repo.find_by_user_id(user.id).await.unwrap();
@@ -263,8 +355,16 @@ mod tests {
     async fn test_update_environment_data() {
         let storage = setup_test_db().await;
         let group = create_test_group(storage.clone(), "test_group").await;
-        let region =
-            create_test_region(storage.clone(), group.id, "test_region", 300, 20.0, 40.0).await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            300,
+            20.0,
+            40.0,
+            false,
+        )
+        .await;
 
         let repo = RegionRepository::new(storage.clone());
 
@@ -286,8 +386,16 @@ mod tests {
     async fn test_delete_region() {
         let storage = setup_test_db().await;
         let group = create_test_group(storage.clone(), "test_group").await;
-        let region =
-            create_test_region(storage.clone(), group.id, "test_region", 600, 23.0, 50.0).await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            600,
+            23.0,
+            50.0,
+            false,
+        )
+        .await;
 
         let repo = RegionRepository::new(storage.clone());
 

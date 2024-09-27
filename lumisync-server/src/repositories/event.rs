@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use sqlx::{Error, Sqlite, Transaction};
+use sqlx::{Error, Pool, Sqlite, Transaction};
 
 use crate::configs::Storage;
 use crate::models::Event;
 
+#[derive(Clone)]
 pub struct EventRepository {
     storage: Arc<Storage>,
 }
@@ -13,10 +14,14 @@ impl EventRepository {
     pub fn new(storage: Arc<Storage>) -> Self {
         Self { storage }
     }
+
+    pub fn get_pool(&self) -> &Pool<Sqlite> {
+        self.storage.get_pool()
+    }
 }
 
 impl EventRepository {
-    async fn create(
+    pub async fn create(
         &self,
         item: &Event,
         transaction: &mut Transaction<'_, Sqlite>,
@@ -37,7 +42,7 @@ impl EventRepository {
         Ok(id as i32)
     }
 
-    async fn find_by_id(&self, id: i32) -> Result<Option<Event>, Error> {
+    pub async fn find_by_id(&self, id: i32) -> Result<Option<Event>, Error> {
         let event: Option<Event> = sqlx::query_as("SELECT * FROM events WHERE id = $1")
             .bind(id)
             .fetch_optional(self.storage.get_pool())
@@ -46,7 +51,7 @@ impl EventRepository {
         Ok(event)
     }
 
-    async fn find_all(&self) -> Result<Vec<Event>, Error> {
+    pub async fn find_all(&self) -> Result<Vec<Event>, Error> {
         let events: Vec<Event> = sqlx::query_as("SELECT * FROM events")
             .fetch_all(self.storage.get_pool())
             .await?;
@@ -54,7 +59,7 @@ impl EventRepository {
         Ok(events)
     }
 
-    async fn update(
+    pub async fn update(
         &self,
         id: i32,
         item: &Event,
@@ -69,7 +74,7 @@ impl EventRepository {
         )
         .bind(&item.event_type)
         .bind(&item.payload)
-        .bind(&item.time)
+        .bind(item.time)
         .bind(id)
         .execute(&mut **transaction)
         .await?;
@@ -77,7 +82,7 @@ impl EventRepository {
         Ok(())
     }
 
-    async fn delete(
+    pub async fn delete(
         &self,
         id: i32,
         transaction: &mut Transaction<'_, Sqlite>,

@@ -16,7 +16,7 @@ expiration = 233333
 [external]
 
 [external.default]
-type = "MQTT"
+type = "Mqtt"
 host = "127.0.0.1"
 port = 1883
 client_id = "client-smart-blinds"

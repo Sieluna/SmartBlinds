@@ -11,6 +11,7 @@ pub mod configs;
 pub mod handles;
 pub mod middlewares;
 pub mod models;
+pub mod repositories;
 pub mod services;
 
 pub async fn run(settings: &Arc<Settings>) {

@@ -8,7 +8,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 time = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
-utoipa = { workspace = true, optional = true }
+utoipa = { workspace = true, features = ["time"], optional = true }
 
 [features]
 default = []

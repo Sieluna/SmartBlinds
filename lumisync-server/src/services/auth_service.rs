@@ -57,8 +57,9 @@ mod tests {
 
         let user = User {
             id: 0,
-            email: String::from("test@test.com"),
+            email: "test@test.com".to_string(),
             password: hash,
+            role: "user".to_string(),
         };
 
         let result = auth_service.verify(&user, password).unwrap();

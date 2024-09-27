@@ -4,7 +4,7 @@ use time::OffsetDateTime;
 
 use super::Table;
 
-#[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct DeviceRecord {
     pub id: i32,
     pub device_id: i32,
@@ -28,7 +28,7 @@ impl Table for DeviceRecordTable {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id INTEGER NOT NULL,
                 data JSON NOT NULL,
-                time TIMESTAMP NOT NULL,
+                time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE
             );
             "#,

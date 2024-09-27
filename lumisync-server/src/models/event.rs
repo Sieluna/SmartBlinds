@@ -4,7 +4,7 @@ use time::OffsetDateTime;
 
 use super::Table;
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Event {
     pub id: i32,
     pub event_type: String,

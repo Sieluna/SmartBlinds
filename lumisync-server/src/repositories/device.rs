@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
-use sqlx::{Error, Sqlite, Transaction};
+use serde_json::Value;
+use sqlx::{Error, Pool, Sqlite, Transaction};
 
 use crate::configs::Storage;
 use crate::models::Device;
 
+#[derive(Clone)]
 pub struct DeviceRepository {
     storage: Arc<Storage>,
 }
@@ -12,6 +14,10 @@ pub struct DeviceRepository {
 impl DeviceRepository {
     pub fn new(storage: Arc<Storage>) -> Self {
         Self { storage }
+    }
+
+    pub fn get_pool(&self) -> &Pool<Sqlite> {
+        self.storage.get_pool()
     }
 }
 
@@ -29,7 +35,7 @@ impl DeviceRepository {
         )
         .bind(item.region_id)
         .bind(&item.name)
-        .bind(&item.device_type)
+        .bind(item.device_type)
         .bind(&item.location)
         .bind(&item.status)
         .execute(&mut **transaction)
@@ -66,7 +72,7 @@ impl DeviceRepository {
         Ok(devices)
     }
 
-    pub async fn find_by_type(&self, device_type: &str) -> Result<Vec<Device>, Error> {
+    pub async fn find_by_type(&self, device_type: i32) -> Result<Vec<Device>, Error> {
         let devices: Vec<Device> = sqlx::query_as("SELECT * FROM devices WHERE device_type = $1")
             .bind(device_type)
             .fetch_all(self.storage.get_pool())
@@ -75,14 +81,17 @@ impl DeviceRepository {
         Ok(devices)
     }
 
-    pub async fn find_by_region_and_type(&self, region_id: i32, device_type: &str) -> Result<Vec<Device>, Error> {
-        let devices: Vec<Device> = sqlx::query_as(
-            "SELECT * FROM devices WHERE region_id = $1 AND device_type = $2"
-        )
-        .bind(region_id)
-        .bind(device_type)
-        .fetch_all(self.storage.get_pool())
-        .await?;
+    pub async fn find_by_region_and_type(
+        &self,
+        region_id: i32,
+        device_type: i32,
+    ) -> Result<Vec<Device>, Error> {
+        let devices: Vec<Device> =
+            sqlx::query_as("SELECT * FROM devices WHERE region_id = $1 AND device_type = $2")
+                .bind(region_id)
+                .bind(device_type)
+                .fetch_all(self.storage.get_pool())
+                .await?;
 
         Ok(devices)
     }
@@ -102,7 +111,7 @@ impl DeviceRepository {
         )
         .bind(item.region_id)
         .bind(&item.name)
-        .bind(&item.device_type)
+        .bind(item.device_type)
         .bind(&item.location)
         .bind(&item.status)
         .bind(id)
@@ -112,20 +121,20 @@ impl DeviceRepository {
         Ok(())
     }
 
-    pub async fn update_state(
+    pub async fn update_status(
         &self,
         id: i32,
-        state: f32,
+        status: &Value,
         transaction: &mut Transaction<'_, Sqlite>,
     ) -> Result<(), Error> {
         sqlx::query(
             r#"
             UPDATE devices
-            SET state = $1
+            SET status = $1
             WHERE id = $2
             "#,
         )
-        .bind(state)
+        .bind(status)
         .bind(id)
         .execute(&mut **transaction)
         .await?;

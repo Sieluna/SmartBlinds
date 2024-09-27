@@ -40,7 +40,7 @@ pub enum MqttAuth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Source {
-    MQTT {
+    Mqtt {
         host: String,
         port: u16,
         client_id: String,
@@ -53,7 +53,7 @@ pub enum Source {
         #[serde(default = "default_keep_alive")]
         keep_alive: u64,
     },
-    HTTP {
+    Http {
         url: String,
     },
 }
@@ -88,18 +88,23 @@ pub struct Settings {
 
 impl Settings {
     pub fn new() -> Result<Self, Box<dyn error::Error>> {
-        let run_mode = env::var("RUN_MODE").unwrap_or("development".into());
+        let custom_config_path = env::var("CONFIG_PATH").ok();
 
-        // TODO: Need to be replaced until `CARGO_RUSTC_CURRENT_DIR` is stable
         let mut settings: Settings = toml::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../",
             "configs/default.toml"
         )))?;
 
-        let settings_path = Self::normalize_path(&format!("configs/{run_mode}.toml"))?;
+        let settings_path = custom_config_path
+            .map(|path| Self::normalize_path(&path))
+            .unwrap_or_else(|| {
+                let run_mode = env::var("RUN_MODE").unwrap_or("development".into());
+                Self::normalize_path(&format!("configs/{run_mode}.toml"))
+            })?;
+
         if settings_path.exists() {
-            let file_buffer = String::from_utf8(fs::read(settings_path)?)?;
+            let file_buffer = String::from_utf8(fs::read(&settings_path)?)?;
             let override_settings = Value::from_str(&file_buffer)?;
             let merged_settings = Self::merge(
                 Value::try_from(settings.to_owned())?,
@@ -109,34 +114,28 @@ impl Settings {
             settings = Value::try_into(merged_settings)?;
         }
 
-        for (_, source) in &mut settings.external {
-            if let Source::MQTT { auth, .. } = source {
-                if let Some(auth_config) = auth {
-                    if let MqttAuth::TLSAuth {
+        for source in settings.external.values_mut() {
+            if let Source::Mqtt {
+                auth:
+                    Some(MqttAuth::TLSAuth {
                         cert_path,
                         key_path,
-                    } = auth_config
-                    {
-                        let normalized_cert_path = Self::normalize_path(cert_path)?
-                            .to_string_lossy()
-                            .to_string();
-                        let normalized_key_path = Self::normalize_path(key_path)?
-                            .to_string_lossy()
-                            .to_string();
-
-                        *auth_config = MqttAuth::TLSAuth {
-                            cert_path: normalized_cert_path,
-                            key_path: normalized_key_path,
-                        };
-                    }
-                }
+                    }),
+                ..
+            } = source
+            {
+                *cert_path = Self::normalize_path(cert_path)?
+                    .to_string_lossy()
+                    .to_string();
+                *key_path = Self::normalize_path(key_path)?
+                    .to_string_lossy()
+                    .to_string();
             }
         }
 
         if let Some(migrate) = &settings.database.migration_path {
             if Path::new(migrate).is_dir() {
                 let migrate_path = Self::normalize_path(migrate)?.to_string_lossy().to_string();
-
                 settings.database.migration_path = Some(migrate_path);
             } else {
                 settings.database.migration_path = None;
@@ -218,7 +217,7 @@ mod tests {
         assert!(settings.auth.expiration > 0);
 
         assert!(!settings.external.is_empty());
-        if let Source::MQTT {
+        if let Source::Mqtt {
             host,
             port,
             client_id,

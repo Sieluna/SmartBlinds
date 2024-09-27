@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
-use lumisync_api::restful::Role;
+use lumisync_api::restful::UserRole;
 use serde::{Deserialize, Serialize};
 
 use crate::configs::Auth;
@@ -19,7 +18,7 @@ pub struct Token {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub sub: i32,
-    pub roles: HashMap<i32, Role>,
+    pub role: UserRole,
     pub iat: u64,
     pub exp: u64,
 }
@@ -27,12 +26,15 @@ pub struct TokenClaims {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenPayload {
     pub id: i32,
-    pub roles: HashMap<i32, Role>,
+    pub role: UserRole,
 }
 
-impl From<(User, HashMap<i32, Role>)> for TokenPayload {
-    fn from((user, roles): (User, HashMap<i32, Role>)) -> Self {
-        TokenPayload { id: user.id, roles }
+impl From<User> for TokenPayload {
+    fn from(user: User) -> Self {
+        TokenPayload {
+            id: user.id,
+            role: user.role.into(),
+        }
     }
 }
 
@@ -40,7 +42,7 @@ impl From<TokenClaims> for TokenPayload {
     fn from(token: TokenClaims) -> Self {
         TokenPayload {
             id: token.sub,
-            roles: token.roles,
+            role: token.role,
         }
     }
 }
@@ -86,7 +88,7 @@ impl TokenService {
 
         let claims = TokenClaims {
             sub: token_payload.id,
-            roles: token_payload.roles,
+            role: token_payload.role,
             iat,
             exp,
         };
@@ -106,18 +108,17 @@ mod tests {
     #[test]
     fn test_generate_and_retrieve_token() {
         let token_service = TokenService::new(Auth {
-            secret: String::from("test"),
+            secret: "test".to_string(),
             expiration: 1000,
         });
         let user = User {
             id: 1,
-            email: String::from("test@test.com"),
-            password: String::from("test"),
+            email: "test@test.com".to_string(),
+            password: "test".to_string(),
+            role: "user".to_string(),
         };
 
-        let token = token_service
-            .generate_token((user.to_owned(), HashMap::new()))
-            .unwrap();
+        let token = token_service.generate_token(user.to_owned()).unwrap();
 
         let claims = token_service
             .retrieve_token_claims(&token.token)
@@ -125,6 +126,6 @@ mod tests {
             .claims;
 
         assert_eq!(claims.sub, user.id);
-        assert!(claims.roles.is_empty());
+        assert_eq!(claims.role, UserRole::User);
     }
 }

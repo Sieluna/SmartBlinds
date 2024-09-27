@@ -18,14 +18,14 @@ pub enum MqttAuth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Source {
-    MQTT {
+    Mqtt {
         host: String,
         port: u16,
         client_id: String,
         topic: String,
         auth: Option<MqttAuth>,
     },
-    HTTP {
+    Http {
         url: String,
     },
 }
@@ -55,22 +55,21 @@ impl Settings {
             "configs/default.toml"
         )))?;
 
-        if let Source::MQTT { auth, .. } = &mut settings.external.default {
-            if let Some(auth_config) = auth {
-                if let MqttAuth::TLSAuth { cert_path, key_path } = auth_config {
-                    let normalized_cert_path = Self::normalize_path(cert_path)?
-                        .to_string_lossy()
-                        .to_string();
-                    let normalized_key_path = Self::normalize_path(key_path)?
-                        .to_string_lossy()
-                        .to_string();
-
-                    *auth_config = MqttAuth::TLSAuth {
-                        cert_path: normalized_cert_path,
-                        key_path: normalized_key_path,
-                    };
-                }
-            }
+        if let Source::Mqtt {
+            auth:
+                Some(MqttAuth::TLSAuth {
+                    cert_path,
+                    key_path,
+                }),
+            ..
+        } = &mut settings.external.default
+        {
+            *cert_path = Self::normalize_path(cert_path)?
+                .to_string_lossy()
+                .to_string();
+            *key_path = Self::normalize_path(key_path)?
+                .to_string_lossy()
+                .to_string();
         }
 
         Ok(settings)
