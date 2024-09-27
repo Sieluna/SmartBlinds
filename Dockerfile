@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /var/lib/lumisync && chmod 777 /var/lib/lumisync
 RUN mkdir -p /etc/lumisync
 
-RUN printf '[server]\nhost = "%s"\nport = "%s"\n\n[database]\nurl = "sqlite:/var/lib/lumisync/lumisync.db"\n' \
+RUN printf '[server]\nhost = "%s"\nport = %s\n\n[database]\nurl = "sqlite:/var/lib/lumisync/lumisync.db"\n' \
     "${HOST}" "${PORT}" > /etc/lumisync/production.toml
 
 COPY --from=builder \

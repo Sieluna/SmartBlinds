@@ -158,8 +158,6 @@ impl UserRepository {
 
 #[cfg(test)]
 mod tests {
-    use lumisync_api::UserRole;
-
     use crate::repositories::tests::*;
 
     use super::*;

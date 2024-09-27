@@ -22,7 +22,7 @@ pub use user_region::UserRegionRepository;
 pub mod tests {
     use std::sync::Arc;
 
-    use serde_json::Value;
+    use serde_json::{json, Value};
 
     use crate::configs::{Database, SchemaManager, Storage};
     use crate::models::*;
@@ -143,8 +143,6 @@ pub mod tests {
         device_type: i32,
         status: Value,
     ) -> Device {
-        use serde_json::json;
-
         sqlx::query_as(
             r#"
             INSERT INTO devices (region_id, name, device_type, location, status)

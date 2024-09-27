@@ -2,10 +2,17 @@ use std::sync::Arc;
 
 use lumisync_api::RegionRole;
 use sqlx::Error;
+use serde_json::json;
 
 use crate::configs::Storage;
 
-// Define permissions using bit masks
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceType {
+    Region,
+    Group,
+    Device,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Permission(u32);
 
@@ -57,7 +64,7 @@ impl Permission {
     }
 }
 
-/// Permission service, unified handling of permission verification logic
+#[derive(Clone)]
 pub struct PermissionService {
     storage: Arc<Storage>,
 }
@@ -67,7 +74,6 @@ impl PermissionService {
         Self { storage }
     }
 
-    /// Check if user is a system administrator
     pub async fn is_admin(&self, user_id: i32) -> Result<bool, Error> {
         let result: Option<bool> =
             sqlx::query_scalar("SELECT role = 'admin' FROM users WHERE id = $1")
@@ -78,7 +84,6 @@ impl PermissionService {
         Ok(result.unwrap_or(false))
     }
 
-    /// Check if user belongs to a user group
     pub async fn is_in_group(&self, user_id: i32, group_id: i32) -> Result<bool, Error> {
         let result: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM users_groups_link WHERE user_id = $1 AND group_id = $2 AND is_active = TRUE)"
@@ -91,7 +96,6 @@ impl PermissionService {
         Ok(result)
     }
 
-    /// Get user's role in a specific region
     pub async fn get_user_region_role(
         &self,
         user_id: i32,
@@ -133,32 +137,27 @@ impl PermissionService {
         Ok(None)
     }
 
-    /// Get user's permissions on a specific resource
     async fn get_user_permission(
         &self,
         user_id: i32,
-        resource_type: &str,
+        resource_type: ResourceType,
         resource_id: i32,
     ) -> Result<Permission, Error> {
-        // Administrators have all permissions
         if self.is_admin(user_id).await? {
-            return match resource_type {
-                "region" => Ok(Permission::REGION_FULL),
-                "group" => Ok(Permission::GROUP_FULL),
-                "device" => Ok(Permission::DEVICE_FULL),
-                _ => Ok(Permission(0)),
-            };
-        }
-
-        match resource_type {
-            "region" => self.get_user_region_permission(user_id, resource_id).await,
-            "group" => self.get_user_group_permission(user_id, resource_id).await,
-            "device" => self.get_user_device_permission(user_id, resource_id).await,
-            _ => Ok(Permission(0)),
+            match resource_type {
+                ResourceType::Region => Ok(Permission::REGION_FULL),
+                ResourceType::Group => Ok(Permission::GROUP_FULL),
+                ResourceType::Device => Ok(Permission::DEVICE_FULL),
+            }
+        } else {
+            match resource_type {
+                ResourceType::Region => self.get_user_region_permission(user_id, resource_id).await,
+                ResourceType::Group => self.get_user_group_permission(user_id, resource_id).await,
+                ResourceType::Device => self.get_user_device_permission(user_id, resource_id).await,
+            }
         }
     }
 
-    /// Get user's permissions on a region
     async fn get_user_region_permission(
         &self,
         user_id: i32,
@@ -175,7 +174,6 @@ impl PermissionService {
         })
     }
 
-    /// Get user's permissions on a group
     async fn get_user_group_permission(
         &self,
         user_id: i32,
@@ -192,13 +190,11 @@ impl PermissionService {
         Ok(Permission::VIEW)
     }
 
-    /// Get user's permissions on a device
     async fn get_user_device_permission(
         &self,
         user_id: i32,
         device_id: i32,
     ) -> Result<Permission, Error> {
-        // Get the region the device belongs to
         let device_region =
             sqlx::query_scalar::<_, i32>("SELECT region_id FROM devices WHERE id = $1")
                 .bind(device_id)
@@ -210,15 +206,12 @@ impl PermissionService {
             None => return Ok(Permission(0)),
         };
 
-        // Get user's permissions on the device's region
         let region_permission = self.get_user_region_permission(user_id, region_id).await?;
 
-        // If user has region device management permission, they have full device control
         if region_permission.has(Permission::REGION_MANAGE_DEVICES) {
             return Ok(Permission::DEVICE_FULL);
         }
 
-        // If user can at least view the region, they can view and control the device
         if region_permission.has(Permission::VIEW) {
             return Ok(Permission::VIEW.union(Permission::DEVICE_CONTROL));
         }
@@ -226,11 +219,10 @@ impl PermissionService {
         Ok(Permission(0))
     }
 
-    /// Check if user has the specified permission
     pub async fn check_permission(
         &self,
         user_id: i32,
-        resource_type: &str,
+        resource_type: ResourceType,
         resource_id: i32,
         required: Permission,
     ) -> Result<bool, Error> {
@@ -240,7 +232,6 @@ impl PermissionService {
         Ok(permission.has(required))
     }
 
-    /// Check if region is publicly accessible
     pub async fn is_region_public(&self, region_id: i32) -> Result<bool, Error> {
         let result: Option<bool> =
             sqlx::query_scalar("SELECT is_public FROM regions WHERE id = $1")
@@ -251,7 +242,6 @@ impl PermissionService {
         Ok(result.unwrap_or(false))
     }
 
-    /// Check if user can access region
     pub async fn can_user_access_region(
         &self,
         user_id: i32,
@@ -312,16 +302,14 @@ impl PermissionService {
         Ok(is_in_regions_group)
     }
 
-    /// Change region's public status
     pub async fn change_region_public_status(
         &self,
         user_id: i32,
         region_id: i32,
         is_public: bool,
     ) -> Result<bool, Error> {
-        // Check if user has permission to update region
         let has_permission = self
-            .check_permission(user_id, "region", region_id, Permission::UPDATE)
+            .check_permission(user_id, ResourceType::Region, region_id, Permission::UPDATE)
             .await?;
         if !has_permission {
             return Ok(false);
@@ -340,19 +328,17 @@ impl PermissionService {
         Ok(true)
     }
 
-    /// Assign region role to user
     pub async fn assign_user_region_role(
         &self,
-        admin_user_id: i32,  // Admin user ID performing assignment
-        target_user_id: i32, // User ID being assigned role
+        admin_user_id: i32,
+        target_user_id: i32,
         region_id: i32,
-        role: &str, // "owner" or "visitor"
+        role: &str,
     ) -> Result<bool, Error> {
-        // Check if user has permission to assign region permissions
         let has_permission = self
             .check_permission(
                 admin_user_id,
-                "region",
+                ResourceType::Region,
                 region_id,
                 Permission::REGION_ASSIGN_PERMISSIONS,
             )
@@ -362,8 +348,7 @@ impl PermissionService {
             return Ok(false);
         }
 
-        // Use a single query to check if user-region association exists
-        let exists = sqlx::query_scalar::<_, bool>(
+        let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM users_regions_link WHERE user_id = $1 AND region_id = $2)"
         )
         .bind(target_user_id)
@@ -374,7 +359,6 @@ impl PermissionService {
         let mut tx = self.storage.get_pool().begin().await?;
 
         if exists {
-            // Update existing association's role
             sqlx::query(
                 "UPDATE users_regions_link SET role = $1, is_active = TRUE WHERE user_id = $2 AND region_id = $3"
             )
@@ -384,7 +368,6 @@ impl PermissionService {
             .execute(&mut *tx)
             .await?;
         } else {
-            // Create new user-region association
             sqlx::query(
                 "INSERT INTO users_regions_link (user_id, region_id, role, joined_at, is_active) VALUES ($1, $2, $3, $4, $5)"
             )
@@ -402,18 +385,16 @@ impl PermissionService {
         Ok(true)
     }
 
-    /// Add user to group
     pub async fn add_user_to_group(
         &self,
-        admin_user_id: i32,  // Admin user ID performing operation
-        target_user_id: i32, // User ID being added
+        admin_user_id: i32,
+        target_user_id: i32,
         group_id: i32,
     ) -> Result<bool, Error> {
-        // Check if user has permission to invite members
         let has_permission = self
             .check_permission(
                 admin_user_id,
-                "group",
+                ResourceType::Group,
                 group_id,
                 Permission::GROUP_INVITE_MEMBERS,
             )
@@ -423,8 +404,7 @@ impl PermissionService {
             return Ok(false);
         }
 
-        // Use a single query to check if user is already in the group
-        let exists = sqlx::query_scalar::<_, bool>(
+        let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM users_groups_link WHERE user_id = $1 AND group_id = $2)",
         )
         .bind(target_user_id)
@@ -435,7 +415,6 @@ impl PermissionService {
         let mut tx = self.storage.get_pool().begin().await?;
 
         if exists {
-            // If user is already in the group, just update status to active
             sqlx::query(
                 "UPDATE users_groups_link SET is_active = TRUE WHERE user_id = $1 AND group_id = $2"
             )
@@ -444,7 +423,6 @@ impl PermissionService {
             .execute(&mut *tx)
             .await?;
         } else {
-            // Add user to group
             sqlx::query(
                 "INSERT INTO users_groups_link (user_id, group_id, joined_at, is_active) VALUES ($1, $2, $3, $4)"
             )
@@ -461,18 +439,16 @@ impl PermissionService {
         Ok(true)
     }
 
-    /// Remove user from group
     pub async fn remove_user_from_group(
         &self,
-        admin_user_id: i32,  // Admin user ID performing operation
-        target_user_id: i32, // User ID being removed
+        admin_user_id: i32,
+        target_user_id: i32,
         group_id: i32,
     ) -> Result<bool, Error> {
-        // Check if user has permission to remove members
         let has_permission = self
             .check_permission(
                 admin_user_id,
-                "group",
+                ResourceType::Group,
                 group_id,
                 Permission::GROUP_REMOVE_MEMBERS,
             )
@@ -484,9 +460,11 @@ impl PermissionService {
 
         let mut tx = self.storage.get_pool().begin().await?;
 
-        // Update user-group association status
         sqlx::query(
-            "UPDATE users_groups_link SET is_active = FALSE WHERE user_id = $1 AND group_id = $2",
+            r#"
+            UPDATE users_groups_link SET is_active = FALSE
+            WHERE user_id = $1 AND group_id = $2
+            "#,
         )
         .bind(target_user_id)
         .bind(group_id)
@@ -498,16 +476,15 @@ impl PermissionService {
         Ok(true)
     }
 
-    /// Get all regions user can access
     pub async fn get_accessible_regions(&self, user_id: i32) -> Result<Vec<i32>, Error> {
-        // Single query to get all regions user can access
-        let regions = sqlx::query_scalar::<_, i32>(
-            "SELECT DISTINCT r.id
-             FROM regions r
-             WHERE EXISTS (SELECT 1 FROM users WHERE id = $1 AND role = 'admin')
+        let regions: Vec<i32> = sqlx::query_scalar(
+            r#"
+            SELECT DISTINCT r.id FROM regions r
+            WHERE EXISTS (SELECT 1 FROM users WHERE id = $1 AND role = 'admin')
                 OR r.is_public = TRUE
                 OR EXISTS (SELECT 1 FROM users_regions_link WHERE user_id = $1 AND region_id = r.id AND is_active = TRUE)
-                OR EXISTS (SELECT 1 FROM users_groups_link ugl WHERE ugl.user_id = $1 AND ugl.group_id = r.group_id AND ugl.is_active = TRUE)"
+                OR EXISTS (SELECT 1 FROM users_groups_link ugl WHERE ugl.user_id = $1 AND ugl.group_id = r.group_id AND ugl.is_active = TRUE)
+            "#,
         )
         .bind(user_id)
         .fetch_all(self.storage.get_pool())
@@ -541,8 +518,8 @@ mod tests {
         let admin_user = create_test_user(storage.clone(), "admin@test.com", "test", true).await;
         let normal_user = create_test_user(storage.clone(), "normal@test.com", "test", false).await;
         let owner_user = create_test_user(storage.clone(), "owner@test.com", "test", false).await;
-        let visitor_user =
-            create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
+        let visitor_user = create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
+        
         let group = create_test_group(storage.clone(), "test_group").await;
         create_test_user_group(storage.clone(), normal_user.id, group.id, true).await;
 
@@ -554,17 +531,13 @@ mod tests {
             22.5,
             45.0,
             false,
-        )
-        .await;
+        ).await;
 
-        // Add region permissions
         create_test_user_region(storage.clone(), owner_user.id, region.id, "owner").await;
         create_test_user_region(storage.clone(), visitor_user.id, region.id, "visitor").await;
 
-        // Create permission service
         let permission_service = PermissionService::new(storage.clone());
 
-        // Test user roles
         let admin_role = permission_service
             .get_user_region_role(admin_user.id, region.id)
             .await
@@ -587,33 +560,39 @@ mod tests {
         assert_eq!(visitor_role, Some(RegionRole::Visitor));
         assert_eq!(regular_role, Some(RegionRole::Visitor));
 
-        // Test bitmask permission system
-        // Test admin permissions
         assert!(permission_service
-            .check_permission(admin_user.id, "region", region.id, Permission::REGION_FULL)
+            .check_permission(
+                admin_user.id,
+                ResourceType::Region,
+                region.id,
+                Permission::REGION_FULL
+            )
             .await
             .unwrap());
 
-        // Test region owner permissions
         assert!(permission_service
             .check_permission(
                 owner_user.id,
-                "region",
+                ResourceType::Region,
                 region.id,
                 Permission::REGION_MANAGE_DEVICES
             )
             .await
             .unwrap());
 
-        // Test visitor permissions - view only
         assert!(permission_service
-            .check_permission(visitor_user.id, "region", region.id, Permission::VIEW)
+            .check_permission(
+                visitor_user.id,
+                ResourceType::Region,
+                region.id,
+                Permission::VIEW
+            )
             .await
             .unwrap());
         assert!(!permission_service
             .check_permission(
                 visitor_user.id,
-                "region",
+                ResourceType::Region,
                 region.id,
                 Permission::REGION_MANAGE_DEVICES
             )
@@ -624,66 +603,35 @@ mod tests {
     #[tokio::test]
     async fn test_public_region_access() {
         let storage = setup_test_db().await;
-
-        // Create test users
         let user1 = create_test_user(storage.clone(), "user1@test.com", "test", false).await;
         let user2 = create_test_user(storage.clone(), "user2@test.com", "test", false).await;
-
-        // Create test group and region
         let group = create_test_group(storage.clone(), "test_group").await;
+        let private_region = create_test_region(
+            storage.clone(),
+            group.id,
+            "private_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        ).await;
 
-        // Create private region, explicitly set is_public=false
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        sqlx::query("INSERT INTO regions (group_id, name, light, temperature, humidity, is_public) VALUES ($1, $2, $3, $4, $5, $6)")
-            .bind(group.id)
-            .bind("private_region")
-            .bind(500)
-            .bind(22.5)
-            .bind(45.0)
-            .bind(false) // Explicitly set as non-public
-            .execute(&mut *tx)
-            .await
-            .unwrap();
-        tx.commit().await.unwrap();
+        let public_region = create_test_region(
+            storage.clone(),
+            group.id,
+            "public_region",
+            500,
+            22.5,
+            45.0,
+            true,
+        ).await;
 
-        let region1 = sqlx::query_as::<_, crate::models::Region>(
-            "SELECT * FROM regions WHERE name = 'private_region'",
-        )
-        .fetch_one(storage.get_pool())
-        .await
-        .unwrap();
-
-        // Create a public region
-        let mut tx = storage.get_pool().begin().await.unwrap();
-        sqlx::query("INSERT INTO regions (group_id, name, light, temperature, humidity, is_public) VALUES ($1, $2, $3, $4, $5, $6)")
-            .bind(group.id)
-            .bind("public_region")
-            .bind(500)
-            .bind(22.5)
-            .bind(45.0)
-            .bind(true)
-            .execute(&mut *tx)
-            .await
-            .unwrap();
-        tx.commit().await.unwrap();
-
-        let public_region = sqlx::query_as::<_, crate::models::Region>(
-            "SELECT * FROM regions WHERE name = 'public_region'",
-        )
-        .fetch_one(storage.get_pool())
-        .await
-        .unwrap();
-
-        // Create user-group association
         create_test_user_group(storage.clone(), user1.id, group.id, true).await;
 
-        // Create permission service
         let permission_service = PermissionService::new(storage.clone());
 
-        // Test region access
-        // user1 is in the group, should be able to access both private and public regions
         assert!(permission_service
-            .can_user_access_region(user1.id, region1.id)
+            .can_user_access_region(user1.id, private_region.id)
             .await
             .unwrap());
         assert!(permission_service
@@ -691,9 +639,8 @@ mod tests {
             .await
             .unwrap());
 
-        // user2 is not in the group, can only access public region
         assert!(!permission_service
-            .can_user_access_region(user2.id, region1.id)
+            .can_user_access_region(user2.id, private_region.id)
             .await
             .unwrap());
         assert!(permission_service
@@ -701,13 +648,61 @@ mod tests {
             .await
             .unwrap());
 
-        // Test new permission system
         assert!(permission_service
-            .check_permission(user1.id, "region", region1.id, Permission::VIEW)
+            .check_permission(user1.id, ResourceType::Region, private_region.id, Permission::VIEW)
             .await
             .unwrap());
         assert!(!permission_service
-            .check_permission(user2.id, "region", region1.id, Permission::VIEW)
+            .check_permission(user2.id, ResourceType::Region, private_region.id, Permission::VIEW)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_device_permissions() {
+        let storage = setup_test_db().await;
+        let owner_user = create_test_user(storage.clone(), "owner@test.com", "test", false).await;
+        let visitor_user = create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        ).await;
+
+        create_test_user_region(storage.clone(), owner_user.id, region.id, "owner").await;
+        create_test_user_region(storage.clone(), visitor_user.id, region.id, "visitor").await;
+
+        let device = create_test_device(
+            storage.clone(),
+            region.id,
+            "test_device",
+            1,
+            json!({"status": "off"}),
+        ).await;
+
+        let permission_service = PermissionService::new(storage.clone());
+
+        assert!(permission_service
+            .check_permission(owner_user.id, ResourceType::Device, device.id, Permission::DEVICE_FULL)
+            .await
+            .unwrap());
+
+        assert!(permission_service
+            .check_permission(visitor_user.id, ResourceType::Device, device.id, Permission::VIEW)
+            .await
+            .unwrap());
+        assert!(permission_service
+            .check_permission(visitor_user.id, ResourceType::Device, device.id, Permission::DEVICE_CONTROL)
+            .await
+            .unwrap());
+        assert!(!permission_service
+            .check_permission(visitor_user.id, ResourceType::Device, device.id, Permission::DEVICE_UPDATE_SETTINGS)
             .await
             .unwrap());
     }

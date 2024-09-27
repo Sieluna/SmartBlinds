@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 use crate::middlewares::{auth, TokenState};
 use crate::models::Group;
 use crate::repositories::{GroupRepository, RegionRepository, UserRepository};
-use crate::services::{Permission, PermissionService, TokenClaims};
+use crate::services::{Permission, PermissionService, ResourceType, TokenClaims};
 
 #[derive(Clone)]
 pub struct GroupState {
@@ -209,7 +209,12 @@ pub async fn get_group_by_id(
     // Check permissions
     if !state
         .permission_service
-        .check_permission(current_user_id, "group", group_id, Permission::VIEW)
+        .check_permission(
+            current_user_id,
+            ResourceType::Group,
+            group_id,
+            Permission::VIEW,
+        )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     {
@@ -284,7 +289,7 @@ pub async fn update_group(
         .permission_service
         .check_permission(
             current_user_id,
-            "group",
+            ResourceType::Group,
             group_id,
             Permission::GROUP_MANAGE_SETTINGS,
         )
@@ -379,7 +384,12 @@ pub async fn delete_group(
     // Use permission service to check if user has permission to delete the group
     let can_delete = state
         .permission_service
-        .check_permission(current_user_id, "group", group_id, Permission::DELETE)
+        .check_permission(
+            current_user_id,
+            ResourceType::Group,
+            group_id,
+            Permission::DELETE,
+        )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

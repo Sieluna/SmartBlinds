@@ -7,7 +7,7 @@ use lumisync_api::restful::*;
 
 use crate::models::Region;
 use crate::repositories::*;
-use crate::services::{Permission, PermissionService, TokenClaims};
+use crate::services::{Permission, PermissionService, ResourceType, TokenClaims};
 
 #[derive(Clone)]
 pub struct RegionState {
@@ -52,7 +52,7 @@ pub async fn create_region(
         .permission_service
         .check_permission(
             current_user_id,
-            "group",
+            ResourceType::Group,
             group_id,
             Permission::GROUP_MANAGE_SETTINGS,
         )
@@ -145,7 +145,12 @@ pub async fn get_regions_by_group_id(
     // Check if user has permission to view the group
     let can_view = state
         .permission_service
-        .check_permission(current_user_id, "group", group_id, Permission::VIEW)
+        .check_permission(
+            current_user_id,
+            ResourceType::Group,
+            group_id,
+            Permission::VIEW,
+        )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -254,7 +259,12 @@ pub async fn update_region(
     // Check if user has permission to update region settings
     let can_update = state
         .permission_service
-        .check_permission(current_user_id, "region", region_id, Permission::UPDATE)
+        .check_permission(
+            current_user_id,
+            ResourceType::Region,
+            region_id,
+            Permission::UPDATE,
+        )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -335,7 +345,12 @@ pub async fn delete_region(
     // Check if user has permission to delete the region
     let can_delete = state
         .permission_service
-        .check_permission(current_user_id, "region", region_id, Permission::DELETE)
+        .check_permission(
+            current_user_id,
+            ResourceType::Region,
+            region_id,
+            Permission::DELETE,
+        )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -403,7 +418,12 @@ pub async fn update_region_environment(
     // Check if user has permission to update region environment
     let can_update = state
         .permission_service
-        .check_permission(current_user_id, "region", region_id, Permission::UPDATE)
+        .check_permission(
+            current_user_id,
+            ResourceType::Region,
+            region_id,
+            Permission::UPDATE,
+        )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
