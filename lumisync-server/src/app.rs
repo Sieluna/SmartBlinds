@@ -26,6 +26,11 @@ fn openapi() -> Router {
             login,
             refresh_token,
             get_current_user,
+            create_group,
+            get_user_groups,
+            get_group_by_id,
+            update_group,
+            delete_group,
         ),
         components(
             schemas(

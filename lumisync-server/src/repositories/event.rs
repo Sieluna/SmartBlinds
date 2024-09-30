@@ -101,7 +101,7 @@ mod tests {
     use serde_json::json;
     use time::OffsetDateTime;
 
-    use crate::repositories::tests::*;
+    use crate::tests::*;
 
     use super::*;
 

@@ -156,7 +156,7 @@ impl GroupRepository {
 
 #[cfg(test)]
 mod tests {
-    use crate::repositories::tests::*;
+    use crate::tests::*;
 
     use super::*;
 

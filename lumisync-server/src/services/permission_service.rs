@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use lumisync_api::RegionRole;
-use sqlx::Error;
 use serde_json::json;
+use sqlx::Error;
 
 use crate::configs::Storage;
 
@@ -496,7 +496,7 @@ impl PermissionService {
 
 #[cfg(test)]
 mod tests {
-    use crate::repositories::tests::*;
+    use crate::tests::*;
 
     use super::*;
 
@@ -518,8 +518,9 @@ mod tests {
         let admin_user = create_test_user(storage.clone(), "admin@test.com", "test", true).await;
         let normal_user = create_test_user(storage.clone(), "normal@test.com", "test", false).await;
         let owner_user = create_test_user(storage.clone(), "owner@test.com", "test", false).await;
-        let visitor_user = create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
-        
+        let visitor_user =
+            create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
+
         let group = create_test_group(storage.clone(), "test_group").await;
         create_test_user_group(storage.clone(), normal_user.id, group.id, true).await;
 
@@ -531,7 +532,8 @@ mod tests {
             22.5,
             45.0,
             false,
-        ).await;
+        )
+        .await;
 
         create_test_user_region(storage.clone(), owner_user.id, region.id, "owner").await;
         create_test_user_region(storage.clone(), visitor_user.id, region.id, "visitor").await;
@@ -614,7 +616,8 @@ mod tests {
             22.5,
             45.0,
             false,
-        ).await;
+        )
+        .await;
 
         let public_region = create_test_region(
             storage.clone(),
@@ -624,7 +627,8 @@ mod tests {
             22.5,
             45.0,
             true,
-        ).await;
+        )
+        .await;
 
         create_test_user_group(storage.clone(), user1.id, group.id, true).await;
 
@@ -649,11 +653,21 @@ mod tests {
             .unwrap());
 
         assert!(permission_service
-            .check_permission(user1.id, ResourceType::Region, private_region.id, Permission::VIEW)
+            .check_permission(
+                user1.id,
+                ResourceType::Region,
+                private_region.id,
+                Permission::VIEW
+            )
             .await
             .unwrap());
         assert!(!permission_service
-            .check_permission(user2.id, ResourceType::Region, private_region.id, Permission::VIEW)
+            .check_permission(
+                user2.id,
+                ResourceType::Region,
+                private_region.id,
+                Permission::VIEW
+            )
             .await
             .unwrap());
     }
@@ -662,7 +676,8 @@ mod tests {
     async fn test_device_permissions() {
         let storage = setup_test_db().await;
         let owner_user = create_test_user(storage.clone(), "owner@test.com", "test", false).await;
-        let visitor_user = create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
+        let visitor_user =
+            create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
         let group = create_test_group(storage.clone(), "test_group").await;
 
         let region = create_test_region(
@@ -673,7 +688,8 @@ mod tests {
             22.5,
             45.0,
             false,
-        ).await;
+        )
+        .await;
 
         create_test_user_region(storage.clone(), owner_user.id, region.id, "owner").await;
         create_test_user_region(storage.clone(), visitor_user.id, region.id, "visitor").await;
@@ -684,25 +700,46 @@ mod tests {
             "test_device",
             1,
             json!({"status": "off"}),
-        ).await;
+        )
+        .await;
 
         let permission_service = PermissionService::new(storage.clone());
 
         assert!(permission_service
-            .check_permission(owner_user.id, ResourceType::Device, device.id, Permission::DEVICE_FULL)
+            .check_permission(
+                owner_user.id,
+                ResourceType::Device,
+                device.id,
+                Permission::DEVICE_FULL
+            )
             .await
             .unwrap());
 
         assert!(permission_service
-            .check_permission(visitor_user.id, ResourceType::Device, device.id, Permission::VIEW)
+            .check_permission(
+                visitor_user.id,
+                ResourceType::Device,
+                device.id,
+                Permission::VIEW
+            )
             .await
             .unwrap());
         assert!(permission_service
-            .check_permission(visitor_user.id, ResourceType::Device, device.id, Permission::DEVICE_CONTROL)
+            .check_permission(
+                visitor_user.id,
+                ResourceType::Device,
+                device.id,
+                Permission::DEVICE_CONTROL
+            )
             .await
             .unwrap());
         assert!(!permission_service
-            .check_permission(visitor_user.id, ResourceType::Device, device.id, Permission::DEVICE_UPDATE_SETTINGS)
+            .check_permission(
+                visitor_user.id,
+                ResourceType::Device,
+                device.id,
+                Permission::DEVICE_UPDATE_SETTINGS
+            )
             .await
             .unwrap());
     }

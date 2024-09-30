@@ -29,3 +29,9 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 utoipa.workspace = true
 uuid = { workspace = true, features = ["v4", "serde"] }
+
+[dev-dependencies]
+lumisync_server = { path = ".", features = ["mock"] } 
+
+[features]
+mock = []

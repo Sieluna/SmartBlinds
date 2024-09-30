@@ -155,3 +155,296 @@ impl DeviceRepository {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::*;
+    use serde_json::json;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_find_device_by_id() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+        let device = create_test_device(
+            storage.clone(),
+            region.id,
+            "test_device",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+
+        let repo = DeviceRepository::new(storage.clone());
+        let found = repo.find_by_id(device.id).await.unwrap();
+        assert!(found.is_some());
+
+        let found_device = found.unwrap();
+        assert_eq!(found_device.name, device.name);
+        assert_eq!(found_device.device_type, device.device_type);
+        assert_eq!(found_device.region_id, region.id);
+    }
+
+    #[tokio::test]
+    async fn test_find_device_by_name() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let device = create_test_device(
+            storage.clone(),
+            region.id,
+            "test_device",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+
+        let repo = DeviceRepository::new(storage.clone());
+        let found = repo.find_by_name(&device.name).await.unwrap();
+        assert!(found.is_some());
+
+        let found_device = found.unwrap();
+        assert_eq!(found_device.name, device.name);
+    }
+
+    #[tokio::test]
+    async fn test_find_devices_by_region_id() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region1 = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region_1",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+        let region2 = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region_2",
+            400,
+            20.0,
+            40.0,
+            false,
+        )
+        .await;
+        let device1 = create_test_device(
+            storage.clone(),
+            region1.id,
+            "test_device_1",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+        let device2 = create_test_device(
+            storage.clone(),
+            region1.id,
+            "test_device_2",
+            2,
+            json!({"online": false}),
+        )
+        .await;
+        let device3 = create_test_device(
+            storage.clone(),
+            region2.id,
+            "test_device_3",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+
+        let repo = DeviceRepository::new(storage.clone());
+        let devices = repo.find_by_region_id(region1.id).await.unwrap();
+        assert_eq!(devices.len(), 2);
+
+        let device_names: Vec<String> = devices.iter().map(|d| d.name.clone()).collect();
+        assert!(device_names.contains(&device1.name));
+        assert!(device_names.contains(&device2.name));
+        assert!(!device_names.contains(&device3.name));
+    }
+
+    #[tokio::test]
+    async fn test_find_devices_by_type() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+        let device1 = create_test_device(
+            storage.clone(),
+            region.id,
+            "test_device_1",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+        let device2 = create_test_device(
+            storage.clone(),
+            region.id,
+            "test_device_2",
+            2,
+            json!({"online": false}),
+        )
+        .await;
+
+        let repo = DeviceRepository::new(storage.clone());
+        let type1_devices = repo.find_by_type(1).await.unwrap();
+        assert_eq!(type1_devices.len(), 1);
+        assert_eq!(type1_devices[0].name, device1.name);
+
+        let type2_devices = repo.find_by_type(2).await.unwrap();
+        assert_eq!(type2_devices.len(), 1);
+        assert_eq!(type2_devices[0].name, device2.name);
+    }
+
+    #[tokio::test]
+    async fn test_update_device() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let device = create_test_device(
+            storage.clone(),
+            region.id,
+            "test_device",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+
+        let repo = DeviceRepository::new(storage.clone());
+        let updated_device = Device {
+            id: device.id,
+            region_id: region.id,
+            name: "updated_device".to_string(),
+            device_type: 2,
+            location: json!({"x": 15, "y": 25}),
+            status: json!({"online": false}),
+        };
+
+        let mut tx = storage.get_pool().begin().await.unwrap();
+        repo.update(device.id, &updated_device, &mut tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let found = repo.find_by_id(device.id).await.unwrap();
+        assert!(found.is_some());
+
+        let found_device = found.unwrap();
+        assert_eq!(found_device.name, "updated_device");
+        assert_eq!(found_device.device_type, 2);
+    }
+
+    #[tokio::test]
+    async fn test_update_device_status() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let device = create_test_device(
+            storage.clone(),
+            region.id,
+            "test_device",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+
+        let repo = DeviceRepository::new(storage.clone());
+        let updated_status = json!({"online": false, "error": "connection lost"});
+        let mut tx = storage.get_pool().begin().await.unwrap();
+        repo.update_status(device.id, &updated_status, &mut tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let found = repo.find_by_id(device.id).await.unwrap();
+        assert!(found.is_some());
+
+        let found_device = found.unwrap();
+        assert_eq!(found_device.status, updated_status);
+    }
+
+    #[tokio::test]
+    async fn test_delete_device() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let device = create_test_device(
+            storage.clone(),
+            region.id,
+            "test_device",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+
+        let repo = DeviceRepository::new(storage.clone());
+        let mut tx = storage.get_pool().begin().await.unwrap();
+        repo.delete(device.id, &mut tx).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let found = repo.find_by_id(device.id).await.unwrap();
+        assert!(found.is_none());
+    }
+}
