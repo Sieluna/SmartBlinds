@@ -158,8 +158,9 @@ impl DeviceRepository {
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::*;
     use serde_json::json;
+
+    use crate::tests::*;
 
     use super::*;
 
@@ -326,6 +327,76 @@ mod tests {
         let type2_devices = repo.find_by_type(2).await.unwrap();
         assert_eq!(type2_devices.len(), 1);
         assert_eq!(type2_devices[0].name, device2.name);
+    }
+
+    #[tokio::test]
+    async fn test_find_devices_by_region_and_type() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region1 = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region_1",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+        let region2 = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region_2",
+            600,
+            23.0,
+            50.0,
+            false,
+        )
+        .await;
+        let device1 = create_test_device(
+            storage.clone(),
+            region1.id,
+            "test_device_1",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+        let device2 = create_test_device(
+            storage.clone(),
+            region1.id,
+            "test_device_2",
+            2,
+            json!({"online": false}),
+        )
+        .await;
+        let device3 = create_test_device(
+            storage.clone(),
+            region2.id,
+            "test_device_3",
+            1,
+            json!({"online": true}),
+        )
+        .await;
+
+        let repo = DeviceRepository::new(storage.clone());
+
+        let devices = repo.find_by_region_and_type(region1.id, 1).await.unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].name, device1.name);
+        assert_eq!(devices[0].device_type, 1);
+
+        let devices = repo.find_by_region_and_type(region1.id, 2).await.unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].name, device2.name);
+        assert_eq!(devices[0].device_type, 2);
+
+        let devices = repo.find_by_region_and_type(region2.id, 1).await.unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].name, device3.name);
+        assert_eq!(devices[0].device_type, 1);
+
+        let devices = repo.find_by_region_and_type(region2.id, 2).await.unwrap();
+        assert_eq!(devices.len(), 0);
     }
 
     #[tokio::test]

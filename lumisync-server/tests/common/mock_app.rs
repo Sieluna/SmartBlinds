@@ -138,24 +138,39 @@ impl MockApp {
         self
     }
 
-    // pub fn with_region_handle(mut self) -> Self {
-    //     let region_state = RegionState {
-    //         region_repository: self.region_repository.clone(),
-    //         group_repository: self.group_repository.clone(),
-    //         device_repository: self.device_repository.clone(),
-    //         user_region_repository: self.user_region_repository.clone(),
-    //         permission_service: self.permission_service.clone(),
-    //     };
+    pub fn with_region_handle(mut self) -> Self {
+        let region_state = RegionState {
+            region_repository: self.region_repository.clone(),
+            group_repository: self.group_repository.clone(),
+            device_repository: self.device_repository.clone(),
+            user_region_repository: self.user_region_repository.clone(),
+            permission_service: self.permission_service.clone(),
+        };
 
-    //     let token_state = TokenState {
-    //         token_service: self.token_service.clone(),
-    //         storage: self.storage.clone(),
-    //     };
+        let token_state = TokenState {
+            token_service: self.token_service.clone(),
+            storage: self.storage.clone(),
+        };
 
-    //     self.router = self.router.merge(
-    //         region_router(region_state, token_state),
-    //     );
+        self.router = self.router.merge(region_router(region_state, token_state));
 
-    //     self
-    // }
+        self
+    }
+
+    pub fn with_device_handle(mut self) -> Self {
+        let device_state = DeviceState {
+            device_repository: self.device_repository.clone(),
+            region_repository: self.region_repository.clone(),
+            permission_service: self.permission_service.clone(),
+        };
+
+        let token_state = TokenState {
+            token_service: self.token_service.clone(),
+            storage: self.storage.clone(),
+        };
+
+        self.router = self.router.merge(device_router(device_state, token_state));
+
+        self
+    }
 }

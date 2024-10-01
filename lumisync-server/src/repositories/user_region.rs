@@ -158,9 +158,10 @@ impl UserRegionRepository {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use lumisync_api::RegionRole;
+
     use crate::tests::*;
+
     use super::*;
 
     #[tokio::test]

@@ -128,3 +128,312 @@ impl RegionSettingRepository {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use time::OffsetDateTime;
+
+    use crate::tests::*;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_create_and_find_region_setting() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let now = OffsetDateTime::now_utc();
+        let one_day_later = now + time::Duration::days(1);
+
+        let setting = create_test_region_setting(
+            storage.clone(),
+            region.id,
+            300,
+            800,
+            18.0,
+            28.0,
+            now,
+            one_day_later,
+        )
+        .await;
+
+        let repo = RegionSettingRepository::new(storage.clone());
+        let found = repo.find_by_id(setting.id).await.unwrap();
+        assert!(found.is_some());
+
+        let found_setting = found.unwrap();
+        assert_eq!(found_setting.region_id, setting.region_id);
+        assert_eq!(found_setting.min_light, setting.min_light);
+        assert_eq!(found_setting.max_light, setting.max_light);
+        assert_eq!(found_setting.min_temperature, setting.min_temperature);
+        assert_eq!(found_setting.max_temperature, setting.max_temperature);
+    }
+
+    #[tokio::test]
+    async fn test_find_by_region_id() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region1 = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region_1",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+        let region2 = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region_2",
+            600,
+            23.0,
+            50.0,
+            false,
+        )
+        .await;
+
+        let now = OffsetDateTime::now_utc();
+        let one_day_later = now + time::Duration::days(1);
+        let two_days_later = now + time::Duration::days(2);
+
+        create_test_region_setting(
+            storage.clone(),
+            region1.id,
+            300,
+            800,
+            18.0,
+            28.0,
+            now,
+            one_day_later,
+        )
+        .await;
+
+        create_test_region_setting(
+            storage.clone(),
+            region1.id,
+            350,
+            850,
+            19.0,
+            29.0,
+            one_day_later,
+            two_days_later,
+        )
+        .await;
+
+        create_test_region_setting(
+            storage.clone(),
+            region2.id,
+            400,
+            900,
+            20.0,
+            30.0,
+            now,
+            two_days_later,
+        )
+        .await;
+
+        let repo = RegionSettingRepository::new(storage.clone());
+
+        let settings = repo.find_by_region_id(region1.id).await.unwrap();
+        assert_eq!(settings.len(), 2);
+
+        let settings = repo.find_by_region_id(region2.id).await.unwrap();
+        assert_eq!(settings.len(), 1);
+        assert_eq!(settings[0].region_id, region2.id);
+    }
+
+    #[tokio::test]
+    async fn test_find_active_by_region_id() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let now = OffsetDateTime::now_utc();
+        let one_hour_ago = now - time::Duration::hours(1);
+        let one_hour_later = now + time::Duration::hours(1);
+        let two_hours_later = now + time::Duration::hours(2);
+        let three_hours_later = now + time::Duration::hours(3);
+
+        create_test_region_setting(
+            storage.clone(),
+            region.id,
+            100,
+            600,
+            15.0,
+            25.0,
+            one_hour_ago - time::Duration::hours(2),
+            one_hour_ago,
+        )
+        .await;
+
+        create_test_region_setting(
+            storage.clone(),
+            region.id,
+            300,
+            800,
+            18.0,
+            28.0,
+            one_hour_ago,
+            one_hour_later,
+        )
+        .await;
+
+        create_test_region_setting(
+            storage.clone(),
+            region.id,
+            350,
+            850,
+            19.0,
+            29.0,
+            one_hour_later,
+            two_hours_later,
+        )
+        .await;
+
+        create_test_region_setting(
+            storage.clone(),
+            region.id,
+            400,
+            900,
+            20.0,
+            30.0,
+            two_hours_later,
+            three_hours_later,
+        )
+        .await;
+
+        let repo = RegionSettingRepository::new(storage.clone());
+        let active = repo.find_active_by_region_id(region.id).await.unwrap();
+        assert!(active.is_some());
+
+        let active_setting = active.unwrap();
+        assert_eq!(active_setting.min_light, 300);
+        assert_eq!(active_setting.max_light, 800);
+        assert_eq!(active_setting.min_temperature, 18.0);
+        assert_eq!(active_setting.max_temperature, 28.0);
+    }
+
+    #[tokio::test]
+    async fn test_update_region_setting() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let now = OffsetDateTime::now_utc();
+        let one_day_later = now + time::Duration::days(1);
+
+        let setting = create_test_region_setting(
+            storage.clone(),
+            region.id,
+            300,
+            800,
+            18.0,
+            28.0,
+            now,
+            one_day_later,
+        )
+        .await;
+
+        let repo = RegionSettingRepository::new(storage.clone());
+
+        let updated_setting = RegionSetting {
+            id: setting.id,
+            region_id: region.id,
+            min_light: 350,
+            max_light: 850,
+            min_temperature: 19.0,
+            max_temperature: 29.0,
+            start: now,
+            end: one_day_later + time::Duration::hours(12),
+        };
+
+        let mut tx = storage.get_pool().begin().await.unwrap();
+        repo.update(setting.id, &updated_setting, &mut tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let found = repo.find_by_id(setting.id).await.unwrap();
+        assert!(found.is_some());
+
+        let found_setting = found.unwrap();
+        assert_eq!(found_setting.min_light, 350);
+        assert_eq!(found_setting.max_light, 850);
+        assert_eq!(found_setting.min_temperature, 19.0);
+        assert_eq!(found_setting.max_temperature, 29.0);
+        assert!(found_setting.end > one_day_later);
+    }
+
+    #[tokio::test]
+    async fn test_delete_region_setting() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let now = OffsetDateTime::now_utc();
+        let one_day_later = now + time::Duration::days(1);
+
+        let setting = create_test_region_setting(
+            storage.clone(),
+            region.id,
+            300,
+            800,
+            18.0,
+            28.0,
+            now,
+            one_day_later,
+        )
+        .await;
+
+        let repo = RegionSettingRepository::new(storage.clone());
+
+        let found = repo.find_by_id(setting.id).await.unwrap();
+        assert!(found.is_some());
+
+        let mut tx = storage.get_pool().begin().await.unwrap();
+        repo.delete(setting.id, &mut tx).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let found = repo.find_by_id(setting.id).await.unwrap();
+        assert!(found.is_none());
+    }
+}

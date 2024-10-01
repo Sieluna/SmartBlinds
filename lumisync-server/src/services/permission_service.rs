@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use lumisync_api::RegionRole;
-use serde_json::json;
 use sqlx::Error;
 
 use crate::configs::Storage;
@@ -496,6 +495,8 @@ impl PermissionService {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use crate::tests::*;
 
     use super::*;

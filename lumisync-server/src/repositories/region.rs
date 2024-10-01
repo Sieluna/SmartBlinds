@@ -350,6 +350,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_update_region() {
+        let storage = setup_test_db().await;
+        let group1 = create_test_group(storage.clone(), "test_group_1").await;
+        let group2 = create_test_group(storage.clone(), "test_group_2").await;
+        let region = create_test_region(
+            storage.clone(),
+            group1.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let repo = RegionRepository::new(storage.clone());
+
+        let updated_region = Region {
+            id: region.id,
+            group_id: group2.id,
+            name: "updated_region".to_string(),
+            light: 600,
+            temperature: 23.5,
+            humidity: 50.0,
+            is_public: true,
+        };
+
+        let mut tx = storage.get_pool().begin().await.unwrap();
+        repo.update(region.id, &updated_region, &mut tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let found = repo.find_by_id(region.id).await.unwrap();
+        assert!(found.is_some());
+
+        let found_region = found.unwrap();
+        assert_eq!(found_region.name, "updated_region");
+        assert_eq!(found_region.group_id, group2.id);
+        assert_eq!(found_region.light, 600);
+        assert_eq!(found_region.temperature, 23.5);
+        assert_eq!(found_region.humidity, 50.0);
+        assert!(found_region.is_public);
+    }
+
+    #[tokio::test]
     async fn test_update_environment_data() {
         let storage = setup_test_db().await;
         let group = create_test_group(storage.clone(), "test_group").await;
@@ -378,6 +424,46 @@ mod tests {
         assert_eq!(found_region.light, 350);
         assert_eq!(found_region.temperature, 21.5);
         assert_eq!(found_region.humidity, 42.5);
+    }
+
+    #[tokio::test]
+    async fn test_update_visibility() {
+        let storage = setup_test_db().await;
+        let group = create_test_group(storage.clone(), "test_group").await;
+        let region = create_test_region(
+            storage.clone(),
+            group.id,
+            "test_region",
+            500,
+            22.5,
+            45.0,
+            false,
+        )
+        .await;
+
+        let repo = RegionRepository::new(storage.clone());
+
+        let mut tx = storage.get_pool().begin().await.unwrap();
+        repo.update_visibility(region.id, true, &mut tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let found = repo.find_by_id(region.id).await.unwrap();
+        assert!(found.is_some());
+        let found_region = found.unwrap();
+        assert!(found_region.is_public);
+
+        let mut tx = storage.get_pool().begin().await.unwrap();
+        repo.update_visibility(region.id, false, &mut tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let found = repo.find_by_id(region.id).await.unwrap();
+        assert!(found.is_some());
+        let found_region = found.unwrap();
+        assert!(!found_region.is_public);
     }
 
     #[tokio::test]
