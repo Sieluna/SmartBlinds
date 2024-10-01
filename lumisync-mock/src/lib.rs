@@ -31,8 +31,8 @@ pub async fn run(settings: &Arc<Settings>) {
     let mock = Arc::new(settings.mock.clone());
 
     let prefix = match source.as_ref() {
-        Source::MQTT { topic, .. } => topic.clone(),
-        Source::HTTP { url } => url.clone(),
+        Source::Mqtt { topic, .. } => topic.clone(),
+        Source::Http { url } => url.clone(),
     };
 
     let broker = MockBroker::new(&source).expect("Failed to create broker");

@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::{Extension, Json};
+use axum::routing::{get, put};
+use axum::{middleware, Extension, Json, Router};
 use lumisync_api::restful::*;
 
+use crate::middlewares::{auth, TokenState};
 use crate::models::Region;
 use crate::repositories::*;
 use crate::services::{Permission, PermissionService, ResourceType, TokenClaims};
@@ -16,6 +18,26 @@ pub struct RegionState {
     pub group_repository: Arc<GroupRepository>,
     pub device_repository: Arc<DeviceRepository>,
     pub permission_service: Arc<PermissionService>,
+}
+
+pub fn region_router(region_state: RegionState, token_state: TokenState) -> Router {
+    Router::new()
+        .route(
+            "/api/groups/{group_id}/regions",
+            get(get_regions_by_group_id).post(create_region),
+        )
+        .route(
+            "/api/regions/{region_id}",
+            get(get_region_by_id)
+                .put(update_region)
+                .delete(delete_region),
+        )
+        .route(
+            "/api/regions/{region_id}/environment",
+            put(update_region_environment),
+        )
+        .route_layer(middleware::from_fn_with_state(token_state, auth))
+        .with_state(region_state)
 }
 
 #[utoipa::path(

@@ -138,6 +138,35 @@ pub mod tests {
         .unwrap()
     }
 
+    pub async fn create_test_region_setting(
+        storage: Arc<Storage>,
+        region_id: i32,
+        min_light: i32,
+        max_light: i32,
+        min_temperature: f32,
+        max_temperature: f32,
+        start: OffsetDateTime,
+        end: OffsetDateTime,
+    ) -> RegionSetting {
+        sqlx::query_as(
+            r#"
+            INSERT INTO regions_settings (region_id, min_light, max_light, min_temperature, max_temperature, start, end)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *;
+            "#,
+        )
+        .bind(region_id)
+        .bind(min_light)
+        .bind(max_light)
+        .bind(min_temperature)
+        .bind(max_temperature)
+        .bind(start)
+        .bind(end)
+        .fetch_one(storage.get_pool())
+        .await
+        .unwrap()
+    }
+
     pub async fn create_test_user_region(
         storage: Arc<Storage>,
         user_id: i32,
