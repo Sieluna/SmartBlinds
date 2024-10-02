@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 
 use super::Table;
 
-#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Group {
     pub id: i32,
     pub name: String,

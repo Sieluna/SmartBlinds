@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Table;
 
-#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Region {
     pub id: i32,
     pub group_id: i32,

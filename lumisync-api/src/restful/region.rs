@@ -59,6 +59,7 @@ pub struct RegionResponse {
     pub info: RegionInfoResponse,
     pub light: i32,
     pub temperature: f32,
+    pub humidity: f32,
     pub users: HashMap<i32, RegionRole>,
     pub devices: Vec<DeviceInfoResponse>,
 }

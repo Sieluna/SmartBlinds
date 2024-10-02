@@ -22,16 +22,16 @@ pub struct DeviceState {
 pub fn device_router(device_state: DeviceState, token_state: TokenState) -> Router {
     Router::new()
         .route(
-            "/api/regions/{region_id}/devices",
+            "/api/regions/:region_id/devices",
             get(get_devices_by_region_id).post(create_device),
         )
         .route(
-            "/api/devices/{device_id}",
+            "/api/devices/:device_id",
             get(get_device_by_id)
                 .put(update_device)
                 .delete(delete_device),
         )
-        .route("/api/devices/{device_id}/status", put(update_device_status))
+        .route("/api/devices/:device_id/status", put(update_device_status))
         .route_layer(middleware::from_fn_with_state(token_state, auth))
         .with_state(device_state)
 }

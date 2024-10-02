@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use super::Table;
 
-#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Device {
     pub id: i32,
     pub region_id: i32,

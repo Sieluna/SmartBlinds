@@ -66,6 +66,7 @@ impl GroupRepository {
                 r#"
                 INSERT INTO users_groups_link (user_id, group_id)
                 VALUES ($1, $2)
+                ON CONFLICT(user_id, group_id) DO UPDATE SET is_active = TRUE
                 "#,
             )
             .bind(user_id)

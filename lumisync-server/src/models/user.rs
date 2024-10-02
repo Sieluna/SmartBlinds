@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Table;
 
-#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct User {
     pub id: i32,
     pub email: String,

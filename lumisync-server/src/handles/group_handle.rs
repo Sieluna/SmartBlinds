@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
@@ -24,7 +25,7 @@ pub fn group_router(group_state: GroupState, token_state: TokenState) -> Router 
     Router::new()
         .route("/api/groups", get(get_user_groups).post(create_group))
         .route(
-            "/api/groups/{group_id}",
+            "/api/groups/:group_id",
             get(get_group_by_id).put(update_group).delete(delete_group),
         )
         .route_layer(middleware::from_fn_with_state(token_state, auth))
@@ -83,8 +84,10 @@ pub async fn create_group(
         created_at: now,
     };
 
-    let mut users = body.users;
-    users.push(current_user_id);
+    let mut users_to_add = body.users.clone();
+    users_to_add.push(current_user_id);
+    users_to_add.sort_unstable();
+    users_to_add.dedup();
 
     let mut tx = state
         .user_repository
@@ -95,7 +98,7 @@ pub async fn create_group(
 
     let group_id = state
         .group_repository
-        .create_with_user(&group, users, &mut tx)
+        .create_with_user(&group, users_to_add, &mut tx)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

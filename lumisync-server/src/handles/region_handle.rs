@@ -23,17 +23,17 @@ pub struct RegionState {
 pub fn region_router(region_state: RegionState, token_state: TokenState) -> Router {
     Router::new()
         .route(
-            "/api/groups/{group_id}/regions",
+            "/api/groups/:group_id/regions",
             get(get_regions_by_group_id).post(create_region),
         )
         .route(
-            "/api/regions/{region_id}",
+            "/api/regions/:region_id",
             get(get_region_by_id)
                 .put(update_region)
                 .delete(delete_region),
         )
         .route(
-            "/api/regions/{region_id}/environment",
+            "/api/regions/:region_id/environment",
             put(update_region_environment),
         )
         .route_layer(middleware::from_fn_with_state(token_state, auth))
@@ -553,6 +553,7 @@ async fn build_region_response(
         },
         light: region.light,
         temperature: region.temperature,
+        humidity: region.humidity,
         users: user_roles,
         devices: device_responses,
     };
