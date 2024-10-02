@@ -1,13 +1,8 @@
 use std::sync::Arc;
 
-use axum::routing::{get, post, put};
+use axum::routing::get;
 use axum::{middleware, Extension, Router};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use sqlx::Row;
-use time;
 
-use lumisync_api::restful::*;
 use lumisync_server::configs::{Auth, Database, SchemaManager, Storage};
 use lumisync_server::handles::*;
 use lumisync_server::middlewares::{auth, TokenState};
