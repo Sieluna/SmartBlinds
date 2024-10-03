@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
@@ -35,7 +34,7 @@ pub fn group_router(group_state: GroupState, token_state: TokenState) -> Router 
 #[utoipa::path(
     post,
     path = "/api/groups",
-    tag = "groups",
+    tag = "group",
     request_body = CreateGroupRequest,
     security(
         ("bearer_auth" = [])
@@ -128,7 +127,7 @@ pub async fn create_group(
 #[utoipa::path(
     get,
     path = "/api/groups",
-    tag = "groups",
+    tag = "group",
     security(
         ("bearer_auth" = [])
     ),
@@ -187,7 +186,7 @@ pub async fn get_user_groups(
 #[utoipa::path(
     get,
     path = "/api/groups/{group_id}",
-    tag = "groups",
+    tag = "group",
     params(
         ("group_id" = i32, Path, description = "Group ID")
     ),
@@ -262,7 +261,7 @@ pub async fn get_group_by_id(
 #[utoipa::path(
     put,
     path = "/api/groups/{group_id}",
-    tag = "groups",
+    tag = "group",
     params(
         ("group_id" = i32, Path, description = "Group ID")
     ),
@@ -362,7 +361,7 @@ pub async fn update_group(
 #[utoipa::path(
     delete,
     path = "/api/groups/{group_id}",
-    tag = "groups",
+    tag = "group",
     params(
         ("group_id" = i32, Path, description = "Group ID")
     ),

@@ -2,17 +2,17 @@ use std::sync::Arc;
 
 use axum::response::Html;
 use axum::routing::get;
-use axum::{middleware, Json, Router};
+use axum::{Json, Router};
 use lumisync_api::restful;
 use serde_json::json;
-use tokio::sync::broadcast;
-use tokio::sync::mpsc;
+// use tokio::sync::broadcast;
+// use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::configs::{SchemaManager, Settings, Storage};
 use crate::handles::*;
-use crate::middlewares::{auth, TokenState};
+use crate::middlewares::TokenState;
 use crate::repositories::*;
 use crate::services::{AuthService, PermissionService, TokenService};
 
@@ -31,6 +31,18 @@ fn openapi() -> Router {
             get_group_by_id,
             update_group,
             delete_group,
+            create_region,
+            get_regions_by_group_id,
+            get_region_by_id,
+            update_region,
+            delete_region,
+            update_region_environment,
+            create_device,
+            get_devices_by_region_id,
+            get_device_by_id,
+            update_device,
+            delete_device,
+            update_device_status,
         ),
         components(
             schemas(
@@ -54,7 +66,9 @@ fn openapi() -> Router {
         ),
         tags(
             (name = "auth", description = "Authentication related endpoints"),
-            (name = "user", description = "User related endpoints"),
+            (name = "group", description = "Group related endpoints"),
+            (name = "region", description = "Region related endpoints"),
+            (name = "device", description = "Device related endpoints"),
         )
     )]
     struct ApiDoc;
@@ -160,9 +174,17 @@ pub async fn create_app(settings: &Arc<Settings>) -> Router {
         permission_service: permission_service.clone(),
     };
 
+    let device_state = DeviceState {
+        device_repository: device_repository.clone(),
+        region_repository: region_repository.clone(),
+        permission_service: permission_service.clone(),
+    };
+
     Router::new()
         .merge(auth_router(auth_state.clone(), token_state.clone()))
         .merge(group_router(group_state.clone(), token_state.clone()))
+        .merge(region_router(region_state.clone(), token_state.clone()))
+        .merge(device_router(device_state.clone(), token_state.clone()))
         .merge(openapi())
         .route("/health", get(health_check))
         .layer(TraceLayer::new_for_http())

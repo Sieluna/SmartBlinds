@@ -39,7 +39,7 @@ pub fn device_router(device_state: DeviceState, token_state: TokenState) -> Rout
 #[utoipa::path(
     post,
     path = "/api/regions/{region_id}/devices",
-    tag = "devices",
+    tag = "device",
     params(
         ("region_id" = i32, Path, description = "Region ID")
     ),
@@ -68,14 +68,6 @@ pub async fn create_device(
     }
 
     let current_user_id = token_data.sub;
-
-    // Get region information
-    let region = state
-        .region_repository
-        .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
 
     // Check if user has permission to manage devices in the region
     let has_permission = state
@@ -147,7 +139,7 @@ pub async fn create_device(
 #[utoipa::path(
     get,
     path = "/api/regions/{region_id}/devices",
-    tag = "devices",
+    tag = "device",
     params(
         ("region_id" = i32, Path, description = "Region ID")
     ),
@@ -168,14 +160,6 @@ pub async fn get_devices_by_region_id(
     Path(region_id): Path<i32>,
 ) -> Result<Json<Vec<DeviceInfoResponse>>, StatusCode> {
     let current_user_id = token_data.sub;
-
-    // Get region information
-    let region = state
-        .region_repository
-        .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
 
     // Check if user has permission to view the region
     let has_permission = state
@@ -218,7 +202,7 @@ pub async fn get_devices_by_region_id(
 #[utoipa::path(
     get,
     path = "/api/devices/{device_id}",
-    tag = "devices",
+    tag = "device",
     params(
         ("device_id" = i32, Path, description = "Device ID")
     ),
@@ -291,7 +275,7 @@ pub async fn get_device_by_id(
 #[utoipa::path(
     put,
     path = "/api/devices/{device_id}",
-    tag = "devices",
+    tag = "device",
     params(
         ("device_id" = i32, Path, description = "Device ID")
     ),
@@ -388,7 +372,7 @@ pub async fn update_device(
 #[utoipa::path(
     delete,
     path = "/api/devices/{device_id}",
-    tag = "devices",
+    tag = "device",
     params(
         ("device_id" = i32, Path, description = "Device ID")
     ),
@@ -409,14 +393,6 @@ pub async fn delete_device(
     Path(device_id): Path<i32>,
 ) -> Result<StatusCode, StatusCode> {
     let current_user_id = token_data.sub;
-
-    // Get device information
-    let device = state
-        .device_repository
-        .find_by_id(device_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
 
     // Check if user has permission to delete the device
     let has_permission = state
@@ -456,7 +432,7 @@ pub async fn delete_device(
 #[utoipa::path(
     put,
     path = "/api/devices/{device_id}/status",
-    tag = "devices",
+    tag = "device",
     params(
         ("device_id" = i32, Path, description = "Device ID")
     ),

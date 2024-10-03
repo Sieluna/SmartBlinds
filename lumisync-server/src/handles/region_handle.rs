@@ -43,7 +43,7 @@ pub fn region_router(region_state: RegionState, token_state: TokenState) -> Rout
 #[utoipa::path(
     post,
     path = "/api/groups/{group_id}/regions",
-    tag = "regions",
+    tag = "region",
     params(
         ("group_id" = i32, Path, description = "Group ID")
     ),
@@ -142,7 +142,7 @@ pub async fn create_region(
 #[utoipa::path(
     get,
     path = "/api/groups/{group_id}/regions",
-    tag = "regions",
+    tag = "region",
     params(
         ("group_id" = i32, Path, description = "Group ID")
     ),
@@ -203,7 +203,7 @@ pub async fn get_regions_by_group_id(
 #[utoipa::path(
     get,
     path = "/api/regions/{region_id}",
-    tag = "regions",
+    tag = "region",
     params(
         ("region_id" = i32, Path, description = "Region ID")
     ),
@@ -253,7 +253,7 @@ pub async fn get_region_by_id(
 #[utoipa::path(
     put,
     path = "/api/regions/{region_id}",
-    tag = "regions",
+    tag = "region",
     params(
         ("region_id" = i32, Path, description = "Region ID")
     ),
@@ -342,7 +342,7 @@ pub async fn update_region(
 #[utoipa::path(
     delete,
     path = "/api/regions/{region_id}",
-    tag = "regions",
+    tag = "region",
     params(
         ("region_id" = i32, Path, description = "Region ID")
     ),
@@ -412,7 +412,7 @@ pub async fn delete_region(
 #[utoipa::path(
     put,
     path = "/api/regions/{region_id}/environment",
-    tag = "regions",
+    tag = "region",
     params(
         ("region_id" = i32, Path, description = "Region ID")
     ),
