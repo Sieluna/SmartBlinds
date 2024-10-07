@@ -1,24 +1,23 @@
 use serde::{Deserialize, Serialize};
 
-/// Error Code Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ErrorCode {
-    /// Invalid request parameters or format
+    /// Invalid input parameters.
     InvalidRequest,
-    /// Target device is not connected
+    /// Device not connected.
     DeviceOffline,
-    /// Requesting entity lacks permission
+    /// Operation not allowed.
     PermissionDenied,
-    /// Operation exceeds system limits
+    /// Resource limit exceeded.
     OverLimit,
-    /// System internal processing error
+    /// Internal processing error.
     InternalError,
-    /// Physical hardware failure
+    /// Device hardware error.
     HardwareFailure,
-    /// Network communication error
+    /// Communication error.
     NetworkError,
-    /// Device battery critically low
+    /// Critical battery level.
     BatteryLow,
-    /// Operation timed out
+    /// Operation time exceeded.
     Timeout,
 }

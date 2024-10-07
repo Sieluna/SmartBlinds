@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -5,104 +7,98 @@ use uuid::Uuid;
 use super::error::ErrorCode;
 use super::{Priority, SensorData, WindowData};
 
-/// Device Message Frame
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceFrame {
-    /// Message metadata
+    /// Message metadata.
     pub header: DeviceHeader,
-    /// Message content
+    /// Message content.
     pub payload: DevicePayload,
 }
 
-/// Device Message Header
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceHeader {
-    /// Message unique identifier
+    /// Unique message identifier.
     pub id: Uuid,
-    /// Message timestamp
+    /// Message creation time.
     pub timestamp: OffsetDateTime,
-    /// Message priority
+    /// Message priority level.
     pub priority: Priority,
 }
 
-/// Device Payload Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DevicePayload {
-    /// Command to control a device
+    /// Control command for device.
     Command(DeviceCommand),
-    /// Status report from a device
+    /// Device status report.
     Status(DeviceStatus),
-    /// Error report from a device
+    /// Device error report.
     Error(DeviceError),
 }
 
-/// Device Command Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DeviceCommand {
-    /// Set device position
+    /// Set window position.
     SetWindow {
-        /// Target window ID
+        /// Target device identifier.
         device_id: i32,
-        /// Window data
+        /// Window position data.
         #[serde(flatten)]
         data: WindowData,
     },
-    /// Calibrate device
+    /// Start device calibration.
     Calibrate,
-    /// Emergency stop
+    /// Stop all operations.
     EmergencyStop,
 }
 
-/// Device Type
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DeviceType {
-    /// Window
+    /// Smart window device.
     Window,
-    /// Sensor
+    /// Environmental sensor.
     Sensor,
 }
 
-/// Device Value Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DeviceValue {
+    /// Window position data.
     Window {
-        /// Window ID
+        /// Window identifier.
         window_id: i32,
-        /// Window data
+        /// Window state data.
         data: WindowData,
     },
+    /// Sensor reading data.
     Sensor {
-        /// Sensor ID
+        /// Sensor identifier.
         sensor_id: i32,
-        /// Sensor data
+        /// Sensor readings.
         data: SensorData,
     },
 }
 
-/// Device Status Report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceStatus {
-    /// Device value
+    /// Current device data.
     pub data: DeviceValue,
-    /// Current position percentage
+    /// Position percentage.
     pub position: u8,
-    /// Battery level percentage
+    /// Battery level percentage.
     pub battery: u8,
-    /// Last update timestamp
+    /// Last update time.
     pub updated_at: OffsetDateTime,
 }
 
-/// Device Error Report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceError {
-    /// Device identifier
+    /// Device identifier.
     pub device_id: i32,
-    /// Device Type
+    /// Device category.
     pub device_type: DeviceType,
-    /// Error code
+    /// Error type.
     pub code: ErrorCode,
-    /// Error message
+    /// Error description.
     pub message: String,
-    /// Error timestamp
+    /// Error occurrence time.
     pub timestamp: OffsetDateTime,
 }

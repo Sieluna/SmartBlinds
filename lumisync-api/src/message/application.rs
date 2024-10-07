@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -8,117 +10,110 @@ use super::device::{DeviceCommand, DeviceStatus};
 use super::error::ErrorCode;
 use super::{Priority, RegionSettingData, WindowData, WindowSettingData};
 
-/// Application Message Container
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppMessage {
-    /// Message metadata
+    /// Message metadata.
     pub header: AppHeader,
-    /// Message content
+    /// Message content.
     pub payload: AppPayload,
 }
 
-/// Application Message Header
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppHeader {
-    /// Message unique identifier
+    /// Unique message identifier.
     pub id: Uuid,
-    /// Message timestamp
+    /// Message creation timestamp.
     pub timestamp: OffsetDateTime,
-    /// Message priority
+    /// Message priority level.
     pub priority: Priority,
-    /// Source identifier
+    /// Message source identifier.
     pub source: String,
-    /// Destination identifier
+    /// Message destination identifier.
     pub destination: String,
 }
 
-/// Application Payload Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AppPayload {
-    /// Cloud to Edge command
+    /// Command from cloud to edge devices.
     CloudCommand(CloudCommand),
-    /// Edge to Cloud report
+    /// Status report from edge to cloud.
     EdgeReport(EdgeReport),
-    /// Acknowledgment response
+    /// Success confirmation response.
     Acknowledge(AckPayload),
-    /// Error response
+    /// Error response with details.
     Error(ErrorPayload),
 }
 
-/// Cloud Command Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CloudCommand {
-    /// Configure a region's settings
+    /// Update region environmental settings.
     ConfigureRegion {
-        /// Target region ID
+        /// Target region identifier.
         region_id: i32,
-        /// Region plan settings
+        /// New region settings.
         plan: Vec<RegionSettingData>,
     },
-    /// Configure a window's settings
+    /// Update window control settings.
     ConfigureWindow {
-        /// Target window ID
+        /// Target window identifier.
         window_id: i32,
-        /// Window plan settings
+        /// New window settings.
         plan: Vec<WindowSettingData>,
     },
-    /// Control multiple devices
+    /// Send commands to multiple devices.
     ControlDevices {
-        /// Target region ID
+        /// Target region identifier.
         region_id: i32,
-        /// Target device IDs and commands
-        commands: HashMap<i32, DeviceCommand>,
+        /// Device commands map.
+        commands: BTreeMap<i32, DeviceCommand>,
     },
-    /// Send cloud analysis recommendations
+    /// Send optimization suggestions.
     SendAnalyse {
-        /// Target region ID
+        /// Target region identifier.
         region_id: i32,
-        /// Recommended window positions
+        /// Suggested window positions.
         windows: Vec<WindowData>,
-        /// Explanation for the analysis
+        /// Analysis explanation.
         reason: String,
-        /// Analysis confidence level (0.0-1.0)
+        /// Confidence score.
         confidence: f32,
     },
 }
 
-/// Edge Report Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EdgeReport {
-    /// Device status report
+    /// Device status update.
     DeviceStatus {
-        /// Target region ID
+        /// Source region identifier.
         region_id: i32,
-        /// Device statuses
+        /// Device status list.
         devices: Vec<DeviceStatus>,
     },
-    /// System health report
+    /// Edge system health metrics.
     HealthReport {
-        /// CPU usage percentage
+        /// CPU usage percentage.
         cpu_usage: f32,
-        /// Memory usage percentage
+        /// Memory usage percentage.
         memory_usage: f32,
     },
 }
 
-/// Acknowledgment Payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AckPayload {
-    /// Original message ID
+    /// Reference to original message.
     pub original_msg_id: Uuid,
-    /// Status information
+    /// Operation status.
     pub status: String,
-    /// Status details (optional)
+    /// Additional status information.
     pub details: Option<String>,
 }
 
-/// Error Payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorPayload {
-    /// Original message ID (if applicable)
+    /// Reference to failed message.
     pub original_msg_id: Option<Uuid>,
-    /// Error code
+    /// Error type.
     pub code: ErrorCode,
-    /// Error message
+    /// Error description.
     pub message: String,
 }

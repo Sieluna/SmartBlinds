@@ -5,10 +5,9 @@ edition = "2024"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
 time = { workspace = true, features = ["serde"] }
-uuid = { workspace = true, features = ["v4", "serde"] }
-utoipa = { workspace = true, features = ["time"], optional = true }
+uuid = { workspace = true, features = ["serde"] }
+utoipa = { workspace = true, features = ["macros", "time"], optional = true }
 
 [features]
 default = []
