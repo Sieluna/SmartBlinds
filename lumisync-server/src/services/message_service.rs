@@ -257,7 +257,7 @@ impl MessageService {
                                     "temperature": data.temperature,
                                     "humidity": data.humidity
                                 });
-                                
+
                                 sqlx::query("INSERT INTO device_records (device_id, data, time) VALUES ($1, $2, $3)")
                                     .bind(sensor_id)
                                     .bind(sensor_data)
@@ -367,7 +367,11 @@ mod tests {
 
         // Initialize protocols
         let result = message_service.init_protocols(config);
-        assert!(result.is_ok(), "Failed to initialize protocols: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to initialize protocols: {:?}",
+            result.err()
+        );
 
         // Start service
         let start_result = message_service.start().await;
@@ -386,7 +390,11 @@ mod tests {
 
         // Stop service
         let stop_result = message_service.stop().await;
-        assert!(stop_result.is_ok(), "Failed to stop service: {:?}", stop_result.err());
+        assert!(
+            stop_result.is_ok(),
+            "Failed to stop service: {:?}",
+            stop_result.err()
+        );
     }
 
     #[tokio::test]
@@ -423,7 +431,11 @@ mod tests {
 
         // Send message
         let result = message_service.send_app_message(message).await;
-        assert!(result.is_ok(), "Failed to send app message: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to send app message: {:?}",
+            result.err()
+        );
 
         // Stop service
         message_service.stop().await.unwrap();
@@ -463,7 +475,11 @@ mod tests {
 
         // Send device message
         let result = message_service.send_device_message(device_message).await;
-        assert!(result.is_ok(), "Failed to send device message: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to send device message: {:?}",
+            result.err()
+        );
 
         // Stop service
         message_service.stop().await.unwrap();
@@ -518,19 +534,19 @@ mod tests {
             illuminance: 600,
             timestamp: OffsetDateTime::now_utc(),
         };
-        
+
         let device_value = DeviceValue::Sensor {
             sensor_id: device.id,
             data: sensor_data,
         };
-        
+
         let device_status = DeviceStatus {
             data: device_value,
             position: 0,
             battery: 100,
             updated_at: OffsetDateTime::now_utc(),
         };
-        
+
         let edge_report = EdgeReport::DeviceStatus {
             region_id: region.id,
             devices: vec![device_status],
@@ -549,7 +565,11 @@ mod tests {
 
         // Process Edge message
         let result = message_service.process_edge_message(message).await;
-        assert!(result.is_ok(), "Failed to process Edge message: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to process Edge message: {:?}",
+            result.err()
+        );
 
         // Stop service
         message_service.stop().await.unwrap();
@@ -580,7 +600,11 @@ mod tests {
 
         // Send control message
         let result = message_service.send_control_message(command).await;
-        assert!(result.is_ok(), "Failed to send control message: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to send control message: {:?}",
+            result.err()
+        );
 
         // Get returned message ID
         let message_id = result.unwrap();

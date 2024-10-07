@@ -15,7 +15,7 @@ pub struct CreateDeviceRequest {
     /// Device category.
     pub device_type: i32,
     /// Device location data.
-    pub location: Vec<u8>,
+    pub location: serde_json::Value,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
@@ -26,7 +26,7 @@ pub struct UpdateDeviceRequest {
     /// New device category.
     pub device_type: Option<i32>,
     /// New location data.
-    pub location: Option<Vec<u8>>,
+    pub location: Option<serde_json::Value>,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
@@ -37,7 +37,7 @@ pub struct DeviceRecordResponse {
     /// Device identifier.
     pub device_id: i32,
     /// Record data.
-    pub data: Vec<u8>,
+    pub data: serde_json::Value,
     /// Record time.
     pub time: OffsetDateTime,
 }
@@ -50,7 +50,7 @@ pub struct DeviceSettingResponse {
     /// Device identifier.
     pub device_id: i32,
     /// Setting data.
-    pub setting: Vec<u8>,
+    pub setting: serde_json::Value,
     /// Start time.
     pub start: OffsetDateTime,
     /// End time.
@@ -69,9 +69,9 @@ pub struct DeviceInfoResponse {
     /// Device category.
     pub device_type: i32,
     /// Device location data.
-    pub location: Vec<u8>,
+    pub location: serde_json::Value,
     /// Current status data.
-    pub status: Vec<u8>,
+    pub status: serde_json::Value,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]

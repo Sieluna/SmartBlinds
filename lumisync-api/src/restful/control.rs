@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommandResponse<'a> {
+pub struct CommandResponse {
     /// Operation result message.
-    pub message: &'a str,
+    pub message: String,
 }

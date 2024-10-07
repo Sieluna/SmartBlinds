@@ -554,7 +554,7 @@ async fn build_region_response(
         light: region.light,
         temperature: region.temperature,
         humidity: region.humidity,
-        users: user_roles,
+        users: user_roles.into_iter().collect(),
         devices: device_responses,
     };
 
