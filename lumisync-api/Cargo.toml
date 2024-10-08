@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+postcard = { version = "1", features = ["alloc"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["alloc"] }
 time = { workspace = true, features = ["serde"] }
-uuid = { workspace = true, features = ["v4", "serde"] }
 utoipa = { workspace = true, features = ["macros", "time"], optional = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
 
 [features]
 default = []
-docs = ["dep:utoipa"]
+std = ["serde/std", "serde_json/std", "time/std"]
+docs = ["dep:utoipa", "std"]
