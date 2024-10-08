@@ -1,19 +1,19 @@
-use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
+use super::Id;
 use super::group::GroupResponse;
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UserRole {
-    /// Standard user access.
+    /// Standard user access
     #[default]
     User,
-    /// Administrative access.
+    /// Administrative access
     Admin,
 }
 
@@ -38,32 +38,50 @@ impl core::fmt::Display for UserRole {
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {
-    /// User email address.
+    /// User email address
     pub email: String,
-    /// User password.
+    /// User password
     pub password: String,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
-    /// User email address.
+    /// User email address
     pub email: String,
-    /// User password.
+    /// User password
     pub password: String,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserResponse {
-    /// User identifier.
-    pub id: i32,
-    /// Primary group identifier.
-    pub group_id: i32,
-    /// User email address.
+    /// User identifier
+    pub id: Id,
+    /// Primary group identifier
+    pub group_id: Id,
+    /// User email address
     pub email: String,
-    /// User permission level.
+    /// User permission level
     pub role: UserRole,
-    /// Associated groups.
+    /// Associated groups
     pub groups: Vec<GroupResponse>,
+}
+
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenResponse {
+    /// Authentication token
+    pub token: String,
+    /// Token type
+    pub token_type: String,
+    /// Expiration time (seconds)
+    pub expires_in: u64,
+}
+
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshTokenRequest {
+    /// Refresh token
+    pub refresh_token: String,
 }

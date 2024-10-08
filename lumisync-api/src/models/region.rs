@@ -1,20 +1,20 @@
 use alloc::collections::BTreeMap;
-use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
+use super::Id;
 use super::device::DeviceInfoResponse;
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RegionRole {
-    /// Read-only access.
+    /// Read-only access
     #[default]
     Visitor,
-    /// Full control access.
+    /// Full control access
     Owner,
 }
 
@@ -39,42 +39,42 @@ impl core::fmt::Display for RegionRole {
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateRegionRequest {
-    /// Region name.
+    /// Region name
     pub name: String,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateRegionSettingRequest {
-    /// New region name.
+    /// New region name
     pub name: Option<String>,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegionInfoResponse {
-    /// Region identifier.
-    pub id: i32,
-    /// Parent group identifier.
-    pub group_id: i32,
-    /// Region name.
+    /// Region identifier
+    pub id: Id,
+    /// Parent group identifier
+    pub group_id: Id,
+    /// Region name
     pub name: String,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegionResponse {
-    /// Basic region data.
+    /// Basic region data
     #[serde(flatten)]
     pub info: RegionInfoResponse,
-    /// Current light level.
+    /// Current light level
     pub light: i32,
-    /// Current temperature.
+    /// Current temperature
     pub temperature: f32,
-    /// Current humidity.
+    /// Current humidity
     pub humidity: f32,
-    /// User access list.
-    pub users: BTreeMap<i32, RegionRole>,
-    /// Associated devices.
+    /// User access list
+    pub users: BTreeMap<Id, RegionRole>,
+    /// Associated devices
     pub devices: Vec<DeviceInfoResponse>,
 }
