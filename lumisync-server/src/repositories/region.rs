@@ -180,6 +180,8 @@ impl RegionRepository {
 
 #[cfg(test)]
 mod tests {
+    use lumisync_api::UserRole;
+
     use crate::tests::*;
 
     use super::*;
@@ -297,7 +299,8 @@ mod tests {
     #[tokio::test]
     async fn test_find_regions_by_user_id() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
         let group1 = create_test_group(storage.clone(), "test_group_1").await;
         let group2 = create_test_group(storage.clone(), "test_group_2").await;
         let group3 = create_test_group(storage.clone(), "test_group_3").await;

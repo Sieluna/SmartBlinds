@@ -5,14 +5,14 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use axum::extract::{
-    ws::{Message, WebSocket, WebSocketUpgrade},
+    ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     State,
 };
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use futures::{SinkExt, StreamExt};
-use lumisync_api::message::{AppMessage, DeviceFrame};
+use lumisync_api::Message;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use uuid::Uuid;
@@ -25,9 +25,9 @@ pub struct WebSocketProtocol {
     /// WebSocket server address
     addr: SocketAddr,
     /// Client connection management
-    clients: Arc<Mutex<HashMap<String, mpsc::Sender<Message>>>>,
+    clients: Arc<Mutex<HashMap<String, mpsc::Sender<WsMessage>>>>,
     /// Application message broadcast channel
-    app_tx: Arc<broadcast::Sender<AppMessage>>,
+    app_tx: Arc<broadcast::Sender<Message>>,
     /// Stop server sender
     stop_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
 }
@@ -47,13 +47,13 @@ impl WebSocketProtocol {
     async fn handle_socket(
         socket: WebSocket,
         client_id: String,
-        clients: Arc<Mutex<HashMap<String, mpsc::Sender<Message>>>>,
-        app_tx: Arc<broadcast::Sender<AppMessage>>,
+        clients: Arc<Mutex<HashMap<String, mpsc::Sender<WsMessage>>>>,
+        app_tx: Arc<broadcast::Sender<Message>>,
     ) {
         let (mut sender, mut receiver) = socket.split();
 
         // Create message channel for the client
-        let (client_tx, mut client_rx) = mpsc::channel::<Message>(100);
+        let (client_tx, mut client_rx) = mpsc::channel::<WsMessage>(100);
 
         // Add client to connection pool
         {
@@ -88,7 +88,7 @@ impl WebSocketProtocol {
 
                     // If sender found, send message
                     if let Some(tx) = tx {
-                        let _ = tx.send(Message::Text(json)).await;
+                        let _ = tx.send(WsMessage::Text(json)).await;
                     }
                 }
             }
@@ -97,21 +97,21 @@ impl WebSocketProtocol {
         // Handle messages from client
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
-                Message::Text(text) => {
-                    // Parse JSON message from client as AppMessage
-                    if let Ok(app_msg) = serde_json::from_str::<AppMessage>(&text) {
+                WsMessage::Text(text) => {
+                    // Parse JSON message from client as Message
+                    if let Ok(app_msg) = serde_json::from_str::<Message>(&text) {
                         // Broadcast to other clients
                         let _ = app_tx.send(app_msg);
                     }
                 }
-                Message::Binary(bin) => {
-                    // Parse binary message from client as AppMessage
-                    if let Ok(app_msg) = bincode::deserialize::<AppMessage>(&bin) {
+                WsMessage::Binary(bin) => {
+                    // Parse binary message from client as Message
+                    if let Ok(app_msg) = bincode::deserialize::<Message>(&bin) {
                         // Broadcast to other clients
                         let _ = app_tx.send(app_msg);
                     }
                 }
-                Message::Close(_) => break,
+                WsMessage::Close(_) => break,
                 _ => {}
             }
         }
@@ -131,8 +131,8 @@ impl WebSocketProtocol {
     async fn ws_handler(
         ws: WebSocketUpgrade,
         State((clients, app_tx)): State<(
-            Arc<Mutex<HashMap<String, mpsc::Sender<Message>>>>,
-            Arc<broadcast::Sender<AppMessage>>,
+            Arc<Mutex<HashMap<String, mpsc::Sender<WsMessage>>>>,
+            Arc<broadcast::Sender<Message>>,
         )>,
     ) -> impl IntoResponse {
         let client_id = Uuid::new_v4().to_string();
@@ -183,10 +183,7 @@ impl MessageProtocol for WebSocketProtocol {
         Ok(())
     }
 
-    async fn send_app_message(
-        &self,
-        message: AppMessage,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn send_app_message(&self, message: Message) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Send message through broadcast channel
         let _ = self.app_tx.send(message);
         Ok(())
@@ -194,7 +191,7 @@ impl MessageProtocol for WebSocketProtocol {
 
     async fn send_device_message(
         &self,
-        _message: DeviceFrame,
+        _message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         // WebSocket protocol doesn't directly handle device messages
         // If needed, could convert to AppMessage and send

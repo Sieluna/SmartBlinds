@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::response::Html;
 use axum::routing::get;
 use axum::{Json, Router};
-use lumisync_api::restful;
+use lumisync_api::models::*;
 use serde_json::json;
 // use tokio::sync::broadcast;
 // use tokio::sync::mpsc;
@@ -46,22 +46,22 @@ fn openapi() -> Router {
         ),
         components(
             schemas(
-                restful::UserRole,
-                restful::RegionRole,
-                restful::LoginRequest,
-                restful::RegisterRequest,
-                restful::UserResponse,
-                restful::CreateGroupRequest,
-                restful::GroupResponse,
-                restful::CreateRegionRequest,
-                restful::RegionInfoResponse,
-                restful::RegionResponse,
-                restful::CreateDeviceRequest,
-                restful::UpdateDeviceRequest,
-                restful::DeviceRecordResponse,
-                restful::DeviceSettingResponse,
-                restful::DeviceInfoResponse,
-                restful::DeviceResponse,
+                UserRole,
+                RegionRole,
+                LoginRequest,
+                RegisterRequest,
+                UserResponse,
+                CreateGroupRequest,
+                GroupResponse,
+                CreateRegionRequest,
+                RegionInfoResponse,
+                RegionResponse,
+                CreateDeviceRequest,
+                UpdateDeviceRequest,
+                DeviceRecordResponse,
+                DeviceSettingResponse,
+                DeviceInfoResponse,
+                DeviceResponse,
             )
         ),
         tags(

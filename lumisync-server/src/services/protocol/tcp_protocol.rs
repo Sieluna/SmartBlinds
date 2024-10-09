@@ -4,11 +4,10 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use lumisync_api::message::{AppMessage, DeviceFrame};
+use lumisync_api::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, oneshot};
-use uuid::Uuid;
 
 use super::MessageProtocol;
 
@@ -20,7 +19,7 @@ pub struct TcpProtocol {
     /// Device connection management
     devices: Arc<Mutex<HashMap<i32, mpsc::Sender<Vec<u8>>>>>,
     /// Device message broadcast channel
-    device_tx: Arc<broadcast::Sender<DeviceFrame>>,
+    device_tx: Arc<broadcast::Sender<Message>>,
     /// Stop server sender
     stop_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
 }
@@ -41,7 +40,7 @@ impl TcpProtocol {
         stream: TcpStream,
         addr: SocketAddr,
         devices: Arc<Mutex<HashMap<i32, mpsc::Sender<Vec<u8>>>>>,
-        device_tx: Arc<broadcast::Sender<DeviceFrame>>,
+        device_tx: Arc<broadcast::Sender<Message>>,
     ) {
         // In real scenarios, there should be an authentication mechanism
         let (mut reader, mut writer) = stream.into_split();
@@ -116,7 +115,7 @@ impl TcpProtocol {
                     match reader.read_exact(&mut buffer).await {
                         Ok(_) => {
                             // Parse device message
-                            match bincode::deserialize::<DeviceFrame>(&buffer) {
+                            match bincode::deserialize::<Message>(&buffer) {
                                 Ok(frame) => {
                                     // Broadcast device message
                                     let _ = device_tx.send(frame);
@@ -199,7 +198,7 @@ impl MessageProtocol for TcpProtocol {
 
     async fn send_app_message(
         &self,
-        _message: AppMessage,
+        _message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         // TCP protocol doesn't directly handle application messages
         // If needed, could convert to DeviceFrame and send
@@ -208,7 +207,7 @@ impl MessageProtocol for TcpProtocol {
 
     async fn send_device_message(
         &self,
-        message: DeviceFrame,
+        message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Send device message through broadcast channel
         let _ = self.device_tx.send(message);

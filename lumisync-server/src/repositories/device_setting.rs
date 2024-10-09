@@ -123,6 +123,7 @@ impl DeviceSettingRepository {
 
 #[cfg(test)]
 mod tests {
+    use lumisync_api::DeviceType;
     use serde_json::json;
     use time::OffsetDateTime;
 
@@ -148,7 +149,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Window,
             json!({"online": true}),
         )
         .await;
@@ -199,7 +200,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device_1",
-            1,
+            &DeviceType::Window,
             json!({"online": true}),
         )
         .await;
@@ -207,7 +208,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device_2",
-            1,
+            &DeviceType::Window,
             json!({"online": true}),
         )
         .await;
@@ -268,7 +269,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Window,
             json!({"online": true}),
         )
         .await;
@@ -336,7 +337,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Window,
             json!({"online": true}),
         )
         .await;
@@ -398,7 +399,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Window,
             json!({"online": true}),
         )
         .await;

@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{middleware, Extension, Json, Router};
-use lumisync_api::restful::*;
+use lumisync_api::models::*;
 use time::OffsetDateTime;
 
 use crate::middlewares::{auth, TokenState};

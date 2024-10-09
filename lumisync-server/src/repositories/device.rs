@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use lumisync_api::DeviceType;
 use serde_json::Value;
 use sqlx::{Error, Pool, Sqlite, Transaction};
 
@@ -35,7 +36,7 @@ impl DeviceRepository {
         )
         .bind(item.region_id)
         .bind(&item.name)
-        .bind(item.device_type)
+        .bind(&item.device_type)
         .bind(&item.location)
         .bind(&item.status)
         .execute(&mut **transaction)
@@ -72,9 +73,9 @@ impl DeviceRepository {
         Ok(devices)
     }
 
-    pub async fn find_by_type(&self, device_type: i32) -> Result<Vec<Device>, Error> {
+    pub async fn find_by_type(&self, device_type: &DeviceType) -> Result<Vec<Device>, Error> {
         let devices: Vec<Device> = sqlx::query_as("SELECT * FROM devices WHERE device_type = $1")
-            .bind(device_type)
+            .bind(device_type.to_string())
             .fetch_all(self.storage.get_pool())
             .await?;
 
@@ -84,12 +85,12 @@ impl DeviceRepository {
     pub async fn find_by_region_and_type(
         &self,
         region_id: i32,
-        device_type: i32,
+        device_type: &DeviceType,
     ) -> Result<Vec<Device>, Error> {
         let devices: Vec<Device> =
             sqlx::query_as("SELECT * FROM devices WHERE region_id = $1 AND device_type = $2")
                 .bind(region_id)
-                .bind(device_type)
+                .bind(device_type.to_string())
                 .fetch_all(self.storage.get_pool())
                 .await?;
 
@@ -111,7 +112,7 @@ impl DeviceRepository {
         )
         .bind(item.region_id)
         .bind(&item.name)
-        .bind(item.device_type)
+        .bind(&item.device_type)
         .bind(&item.location)
         .bind(&item.status)
         .bind(id)
@@ -158,6 +159,7 @@ impl DeviceRepository {
 
 #[cfg(test)]
 mod tests {
+    use lumisync_api::DeviceType;
     use serde_json::json;
 
     use crate::tests::*;
@@ -182,7 +184,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
@@ -216,7 +218,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
@@ -257,7 +259,7 @@ mod tests {
             storage.clone(),
             region1.id,
             "test_device_1",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
@@ -265,7 +267,7 @@ mod tests {
             storage.clone(),
             region1.id,
             "test_device_2",
-            2,
+            &DeviceType::Window,
             json!({"online": false}),
         )
         .await;
@@ -273,7 +275,7 @@ mod tests {
             storage.clone(),
             region2.id,
             "test_device_3",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
@@ -306,7 +308,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device_1",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
@@ -314,17 +316,17 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device_2",
-            2,
+            &DeviceType::Window,
             json!({"online": false}),
         )
         .await;
 
         let repo = DeviceRepository::new(storage.clone());
-        let type1_devices = repo.find_by_type(1).await.unwrap();
+        let type1_devices = repo.find_by_type(&DeviceType::Sensor).await.unwrap();
         assert_eq!(type1_devices.len(), 1);
         assert_eq!(type1_devices[0].name, device1.name);
 
-        let type2_devices = repo.find_by_type(2).await.unwrap();
+        let type2_devices = repo.find_by_type(&DeviceType::Window).await.unwrap();
         assert_eq!(type2_devices.len(), 1);
         assert_eq!(type2_devices[0].name, device2.name);
     }
@@ -357,7 +359,7 @@ mod tests {
             storage.clone(),
             region1.id,
             "test_device_1",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
@@ -365,7 +367,7 @@ mod tests {
             storage.clone(),
             region1.id,
             "test_device_2",
-            2,
+            &DeviceType::Window,
             json!({"online": false}),
         )
         .await;
@@ -373,29 +375,41 @@ mod tests {
             storage.clone(),
             region2.id,
             "test_device_3",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
 
         let repo = DeviceRepository::new(storage.clone());
 
-        let devices = repo.find_by_region_and_type(region1.id, 1).await.unwrap();
+        let devices = repo
+            .find_by_region_and_type(region1.id, &DeviceType::Sensor)
+            .await
+            .unwrap();
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].name, device1.name);
-        assert_eq!(devices[0].device_type, 1);
+        assert_eq!(devices[0].device_type, DeviceType::Sensor.to_string());
 
-        let devices = repo.find_by_region_and_type(region1.id, 2).await.unwrap();
+        let devices = repo
+            .find_by_region_and_type(region1.id, &DeviceType::Window)
+            .await
+            .unwrap();
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].name, device2.name);
-        assert_eq!(devices[0].device_type, 2);
+        assert_eq!(devices[0].device_type, DeviceType::Window.to_string());
 
-        let devices = repo.find_by_region_and_type(region2.id, 1).await.unwrap();
+        let devices = repo
+            .find_by_region_and_type(region2.id, &DeviceType::Sensor)
+            .await
+            .unwrap();
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].name, device3.name);
-        assert_eq!(devices[0].device_type, 1);
+        assert_eq!(devices[0].device_type, DeviceType::Sensor.to_string());
 
-        let devices = repo.find_by_region_and_type(region2.id, 2).await.unwrap();
+        let devices = repo
+            .find_by_region_and_type(region2.id, &DeviceType::Window)
+            .await
+            .unwrap();
         assert_eq!(devices.len(), 0);
     }
 
@@ -418,7 +432,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
@@ -428,7 +442,7 @@ mod tests {
             id: device.id,
             region_id: region.id,
             name: "updated_device".to_string(),
-            device_type: 2,
+            device_type: DeviceType::Window.to_string(),
             location: json!({"x": 15, "y": 25}),
             status: json!({"online": false}),
         };
@@ -444,7 +458,7 @@ mod tests {
 
         let found_device = found.unwrap();
         assert_eq!(found_device.name, "updated_device");
-        assert_eq!(found_device.device_type, 2);
+        assert_eq!(found_device.device_type, DeviceType::Window.to_string());
     }
 
     #[tokio::test]
@@ -466,7 +480,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;
@@ -505,7 +519,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Sensor,
             json!({"online": true}),
         )
         .await;

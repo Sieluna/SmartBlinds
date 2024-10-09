@@ -4,8 +4,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{middleware, Extension, Json, Router};
-use lumisync_api::restful::{GroupResponse, LoginRequest, RegisterRequest, UserResponse};
-use lumisync_api::UserRole;
+use lumisync_api::models::*;
 
 use crate::middlewares::{auth, TokenState};
 use crate::models::User;
@@ -214,7 +213,7 @@ pub async fn get_current_user(
         id: user.id,
         group_id: group_responses.first().map(|g| g.id).unwrap_or(0),
         email: user.email,
-        role: UserRole::User,
+        role: user.role.into(),
         groups: group_responses,
     };
 

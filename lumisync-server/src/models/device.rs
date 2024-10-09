@@ -8,7 +8,7 @@ pub struct Device {
     pub id: i32,
     pub region_id: i32,
     pub name: String,
-    pub device_type: i32,
+    pub device_type: String,
     pub location: Value,
     pub status: Value,
 }
@@ -28,7 +28,7 @@ impl Table for DeviceTable {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 region_id INTEGER NOT NULL,
                 name VARCHAR(255) NOT NULL UNIQUE,
-                device_type INTEGER NOT NULL,
+                device_type VARCHAR(255) NOT NULL DEFAULT 'sensor',
                 location JSON,
                 status JSON,
                 FOREIGN KEY (region_id) REFERENCES regions (id) ON DELETE CASCADE

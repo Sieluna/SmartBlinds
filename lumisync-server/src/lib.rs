@@ -32,6 +32,7 @@ pub async fn run(settings: &Arc<Settings>) {
 pub mod tests {
     use std::sync::Arc;
 
+    use lumisync_api::{DeviceType, UserRole};
     use serde_json::{json, Value};
     use time::OffsetDateTime;
 
@@ -57,10 +58,8 @@ pub mod tests {
         storage: Arc<Storage>,
         email: &str,
         password: &str,
-        is_admin: bool,
+        role: &UserRole,
     ) -> User {
-        let role = if is_admin { "admin" } else { "user" };
-
         sqlx::query_as(
             r#"
             INSERT INTO users (email, password, role)
@@ -70,7 +69,7 @@ pub mod tests {
         )
         .bind(email)
         .bind(password)
-        .bind(role)
+        .bind(role.to_string())
         .fetch_one(storage.get_pool())
         .await
         .unwrap()
@@ -192,7 +191,7 @@ pub mod tests {
         storage: Arc<Storage>,
         region_id: i32,
         name: &str,
-        device_type: i32,
+        device_type: &DeviceType,
         status: Value,
     ) -> Device {
         sqlx::query_as(
@@ -204,7 +203,7 @@ pub mod tests {
         )
         .bind(region_id)
         .bind(name)
-        .bind(device_type)
+        .bind(device_type.to_string())
         .bind(json!({"x": 0, "y": 0}))
         .bind(status)
         .fetch_one(storage.get_pool())

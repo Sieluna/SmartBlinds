@@ -2,7 +2,9 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use lumisync_api::message::*;
+use lumisync_api::{
+    CloudCommand, DeviceValue, EdgeReport, Message, MessageHeader, MessagePayload, Priority,
+};
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
@@ -34,8 +36,8 @@ impl Default for MessageServiceConfig {
 pub struct MessageService {
     storage: Arc<Storage>,
     protocol_manager: Arc<ProtocolManager>,
-    client_tx: broadcast::Sender<AppMessage>,
-    edge_tx: broadcast::Sender<DeviceFrame>,
+    client_tx: broadcast::Sender<Message>,
+    edge_tx: broadcast::Sender<Message>,
     stop_tx: Option<oneshot::Sender<()>>,
 }
 
@@ -159,7 +161,7 @@ impl MessageService {
     /// Send application message
     pub async fn send_app_message(
         &self,
-        message: AppMessage,
+        message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Log message
         log_event(&self.storage, "outgoing_app_message", &message).await?;
@@ -175,7 +177,7 @@ impl MessageService {
     /// Send device message
     pub async fn send_device_message(
         &self,
-        message: DeviceFrame,
+        message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         // For tests, this just logs success without actually sending
         #[cfg(test)]
@@ -195,21 +197,21 @@ impl MessageService {
     /// Process messages from Edge devices
     pub async fn process_edge_message(
         &self,
-        message: AppMessage,
+        message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Log message
         log_event(&self.storage, "edge_message", &message).await?;
 
         // Process by message type
         match &message.payload {
-            AppPayload::EdgeReport(report) => self.handle_edge_report(report, &message).await?,
-            AppPayload::Acknowledge(ack) => {
+            MessagePayload::EdgeReport(report) => self.handle_edge_report(report, &message).await?,
+            MessagePayload::Acknowledge(ack) => {
                 tracing::info!(
                     "Received acknowledgment for message: {}",
                     ack.original_msg_id
                 );
             }
-            AppPayload::Error(error) => {
+            MessagePayload::Error(error) => {
                 tracing::error!(
                     "Received error from edge device: {:?} - {}",
                     error.code,
@@ -228,7 +230,7 @@ impl MessageService {
     async fn handle_edge_report(
         &self,
         report: &EdgeReport,
-        original_message: &AppMessage,
+        original_message: &Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         match report {
             EdgeReport::DeviceStatus { region_id, devices } => {
@@ -295,15 +297,15 @@ impl MessageService {
     ) -> Result<Uuid, Box<dyn Error + Send + Sync>> {
         let message_id = Uuid::new_v4();
 
-        let message = AppMessage {
-            header: AppHeader {
+        let message = Message {
+            header: MessageHeader {
                 id: message_id,
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
                 source: "cloud".to_string(),
                 destination: "edge".to_string(),
             },
-            payload: AppPayload::CloudCommand(command),
+            payload: MessagePayload::CloudCommand(command),
         };
 
         // Log the sent message
@@ -349,6 +351,10 @@ mod tests {
     use uuid::Uuid;
 
     use crate::tests::*;
+    use lumisync_api::{
+        Command, DeviceStatus, DeviceType, DeviceValue, Message, MessageHeader, MessagePayload,
+        Priority, SensorData, UserRole, WindowData,
+    };
 
     use super::*;
 
@@ -415,15 +421,15 @@ mod tests {
         message_service.start().await.unwrap();
 
         // Create a test message
-        let message = AppMessage {
-            header: AppHeader {
+        let message = Message {
+            header: MessageHeader {
                 id: Uuid::new_v4(),
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
                 source: "test".to_string(),
                 destination: "cloud".to_string(),
             },
-            payload: AppPayload::CloudCommand(CloudCommand::ConfigureWindow {
+            payload: MessagePayload::CloudCommand(CloudCommand::ConfigureWindow {
                 window_id: 1,
                 plan: vec![],
             }),
@@ -459,17 +465,27 @@ mod tests {
         message_service.start().await.unwrap();
 
         // Create a test device message
-        let device_message = DeviceFrame {
-            header: DeviceHeader {
+        let device_message = Message {
+            header: MessageHeader {
                 id: Uuid::new_v4(),
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
+                source: "device".to_string(),
+                destination: "cloud".to_string(),
             },
-            payload: DevicePayload::Command(DeviceCommand::SetWindow {
-                device_id: 1,
-                data: WindowData {
-                    target_position: 75,
-                },
+            payload: MessagePayload::CloudCommand(CloudCommand::ControlDevices {
+                region_id: 1,
+                commands: [(
+                    1,
+                    Command::SetWindow {
+                        device_id: 1,
+                        data: WindowData {
+                            target_position: 75,
+                        },
+                    },
+                )]
+                .into_iter()
+                .collect(),
             }),
         };
 
@@ -490,7 +506,13 @@ mod tests {
         let storage = setup_test_db().await;
 
         // Create test user, group and region
-        let _user = create_test_user(storage.clone(), "test@example.com", "password", true).await;
+        let _user = create_test_user(
+            storage.clone(),
+            "test@example.com",
+            "password",
+            &UserRole::User,
+        )
+        .await;
         let group = create_test_group(storage.clone(), "Test Group").await;
         let region = create_test_region(
             storage.clone(),
@@ -508,7 +530,7 @@ mod tests {
             storage.clone(),
             region.id,
             "Test Device",
-            1, // Device type
+            &DeviceType::Sensor,
             json!({"state": "active"}),
         )
         .await;
@@ -552,15 +574,15 @@ mod tests {
             devices: vec![device_status],
         };
 
-        let message = AppMessage {
-            header: AppHeader {
+        let message = Message {
+            header: MessageHeader {
                 id: Uuid::new_v4(),
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
                 source: "edge".to_string(),
                 destination: "cloud".to_string(),
             },
-            payload: AppPayload::EdgeReport(edge_report),
+            payload: MessagePayload::EdgeReport(edge_report),
         };
 
         // Process Edge message

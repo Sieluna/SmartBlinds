@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, put};
 use axum::{middleware, Extension, Json, Router};
-use lumisync_api::restful::*;
+use lumisync_api::models::*;
 
 use crate::middlewares::{auth, TokenState};
 use crate::models::Region;
@@ -538,7 +538,7 @@ async fn build_region_response(
             id: device.id,
             region_id: device.region_id,
             name: device.name,
-            device_type: device.device_type,
+            device_type: device.device_type.into(),
             location: device.location.clone(),
             status: device.status.clone(),
         })

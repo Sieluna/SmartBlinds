@@ -2,7 +2,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
-use lumisync_api::restful::CreateGroupRequest;
+use lumisync_api::models::CreateGroupRequest;
 use lumisync_server::tests::{create_test_group, create_test_user_group};
 use serde_json::json;
 

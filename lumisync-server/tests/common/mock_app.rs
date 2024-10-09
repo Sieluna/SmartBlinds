@@ -1,8 +1,11 @@
+#![allow(unused)]
+
 use std::sync::Arc;
 
 use axum::routing::get;
 use axum::{middleware, Extension, Router};
 
+use lumisync_api::UserRole;
 use lumisync_server::configs::{Auth, Database, SchemaManager, Storage};
 use lumisync_server::handles::*;
 use lumisync_server::middlewares::{auth, TokenState};
@@ -56,8 +59,13 @@ impl MockApp {
 
         let password_hash = auth_service.hash("test").unwrap();
 
-        let admin =
-            tests::create_test_user(storage.clone(), "admin@test.com", &password_hash, true).await;
+        let admin = tests::create_test_user(
+            storage.clone(),
+            "admin@test.com",
+            &password_hash,
+            &UserRole::Admin,
+        )
+        .await;
 
         let token_data = token_service.generate_token(admin.clone()).unwrap();
 

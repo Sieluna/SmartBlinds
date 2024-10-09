@@ -11,7 +11,7 @@ pub use ws_protocol::*;
 // pub use webtransport_protocol::*;
 
 use async_trait::async_trait;
-use lumisync_api::message::{AppMessage, DeviceFrame};
+use lumisync_api::Message;
 use std::error::Error;
 use std::fmt::Debug;
 
@@ -25,15 +25,12 @@ pub trait MessageProtocol: Send + Sync + Debug {
     async fn start(&self) -> Result<(), Box<dyn Error + Send + Sync>>;
 
     /// Send application message
-    async fn send_app_message(
-        &self,
-        message: AppMessage,
-    ) -> Result<(), Box<dyn Error + Send + Sync>>;
+    async fn send_app_message(&self, message: Message) -> Result<(), Box<dyn Error + Send + Sync>>;
 
     /// Send device message
     async fn send_device_message(
         &self,
-        message: DeviceFrame,
+        message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>>;
 
     /// Stop the protocol server
@@ -93,7 +90,7 @@ impl ProtocolManager {
 
     pub async fn broadcast_app_message(
         &self,
-        message: AppMessage,
+        message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         for protocol in &self.protocols {
             if let Err(e) = protocol.send_app_message(message.clone()).await {
@@ -105,7 +102,7 @@ impl ProtocolManager {
 
     pub async fn broadcast_device_message(
         &self,
-        message: DeviceFrame,
+        message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         for protocol in &self.protocols {
             if let Err(e) = protocol.send_device_message(message.clone()).await {

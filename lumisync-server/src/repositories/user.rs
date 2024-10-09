@@ -158,6 +158,8 @@ impl UserRepository {
 
 #[cfg(test)]
 mod tests {
+    use lumisync_api::UserRole;
+
     use crate::tests::*;
 
     use super::*;
@@ -165,7 +167,8 @@ mod tests {
     #[tokio::test]
     async fn test_find_user_by_id() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
 
         let repo = UserRepository::new(storage.clone());
         let found = repo.find_by_id(user.id).await.unwrap();
@@ -179,7 +182,8 @@ mod tests {
     #[tokio::test]
     async fn test_find_user_by_email() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
 
         let repo = UserRepository::new(storage.clone());
         let found = repo.find_by_email(&user.email).await.unwrap();
@@ -192,7 +196,8 @@ mod tests {
     #[tokio::test]
     async fn test_update_user() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
 
         let repo = UserRepository::new(storage.clone());
         let updated_user = User {
@@ -217,7 +222,8 @@ mod tests {
     #[tokio::test]
     async fn test_update_role() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
 
         let repo = UserRepository::new(storage.clone());
 
@@ -235,7 +241,8 @@ mod tests {
     #[tokio::test]
     async fn test_delete_user() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
 
         let repo = UserRepository::new(storage.clone());
 

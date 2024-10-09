@@ -158,7 +158,7 @@ impl UserRegionRepository {
 
 #[cfg(test)]
 mod tests {
-    use lumisync_api::RegionRole;
+    use lumisync_api::{RegionRole, UserRole};
 
     use crate::tests::*;
 
@@ -167,7 +167,8 @@ mod tests {
     #[tokio::test]
     async fn test_create_and_find_user_region() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
         let group = create_test_group(storage.clone(), "test_group").await;
         let region = create_test_region(
             storage.clone(),
@@ -207,8 +208,10 @@ mod tests {
     #[tokio::test]
     async fn test_find_by_user_and_region() {
         let storage = setup_test_db().await;
-        let user1 = create_test_user(storage.clone(), "user1@test.com", "test", false).await;
-        let user2 = create_test_user(storage.clone(), "user2@test.com", "test", false).await;
+        let user1 =
+            create_test_user(storage.clone(), "user1@test.com", "test", &UserRole::User).await;
+        let user2 =
+            create_test_user(storage.clone(), "user2@test.com", "test", &UserRole::User).await;
         let group = create_test_group(storage.clone(), "test_group").await;
         let region1 =
             create_test_region(storage.clone(), group.id, "region1", 500, 22.5, 45.0, false).await;
@@ -261,9 +264,12 @@ mod tests {
     #[tokio::test]
     async fn test_get_region_roles_by_region_id() {
         let storage = setup_test_db().await;
-        let user1 = create_test_user(storage.clone(), "user1@test.com", "test", false).await;
-        let user2 = create_test_user(storage.clone(), "user2@test.com", "test", false).await;
-        let user3 = create_test_user(storage.clone(), "user3@test.com", "test", false).await;
+        let user1 =
+            create_test_user(storage.clone(), "user1@test.com", "test", &UserRole::User).await;
+        let user2 =
+            create_test_user(storage.clone(), "user2@test.com", "test", &UserRole::User).await;
+        let user3 =
+            create_test_user(storage.clone(), "user3@test.com", "test", &UserRole::User).await;
         let group = create_test_group(storage.clone(), "test_group").await;
         let region = create_test_region(
             storage.clone(),
@@ -333,7 +339,8 @@ mod tests {
     #[tokio::test]
     async fn test_update_role() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
         let group = create_test_group(storage.clone(), "test_group").await;
         let region = create_test_region(
             storage.clone(),
@@ -368,7 +375,8 @@ mod tests {
     #[tokio::test]
     async fn test_update_active_status() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
         let group = create_test_group(storage.clone(), "test_group").await;
         let region = create_test_region(
             storage.clone(),
@@ -419,7 +427,8 @@ mod tests {
     #[tokio::test]
     async fn test_delete_user_region() {
         let storage = setup_test_db().await;
-        let user = create_test_user(storage.clone(), "test@test.com", "test", false).await;
+        let user =
+            create_test_user(storage.clone(), "test@test.com", "test", &UserRole::User).await;
         let group = create_test_group(storage.clone(), "test_group").await;
         let region = create_test_region(
             storage.clone(),

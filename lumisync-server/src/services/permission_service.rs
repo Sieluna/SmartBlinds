@@ -495,6 +495,7 @@ impl PermissionService {
 
 #[cfg(test)]
 mod tests {
+    use lumisync_api::{DeviceType, UserRole};
     use serde_json::json;
 
     use crate::tests::*;
@@ -504,8 +505,10 @@ mod tests {
     #[tokio::test]
     async fn test_is_admin() {
         let storage = setup_test_db().await;
-        let admin_user = create_test_user(storage.clone(), "admin@test.com", "test", true).await;
-        let normal_user = create_test_user(storage.clone(), "normal@test.com", "test", false).await;
+        let admin_user =
+            create_test_user(storage.clone(), "admin@test.com", "test", &UserRole::Admin).await;
+        let normal_user =
+            create_test_user(storage.clone(), "normal@test.com", "test", &UserRole::User).await;
 
         let permission_service = PermissionService::new(storage.clone());
 
@@ -516,11 +519,14 @@ mod tests {
     #[tokio::test]
     async fn test_region_permissions() {
         let storage = setup_test_db().await;
-        let admin_user = create_test_user(storage.clone(), "admin@test.com", "test", true).await;
-        let normal_user = create_test_user(storage.clone(), "normal@test.com", "test", false).await;
-        let owner_user = create_test_user(storage.clone(), "owner@test.com", "test", false).await;
+        let admin_user =
+            create_test_user(storage.clone(), "admin@test.com", "test", &UserRole::Admin).await;
+        let normal_user =
+            create_test_user(storage.clone(), "normal@test.com", "test", &UserRole::User).await;
+        let owner_user =
+            create_test_user(storage.clone(), "owner@test.com", "test", &UserRole::User).await;
         let visitor_user =
-            create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
+            create_test_user(storage.clone(), "visitor@test.com", "test", &UserRole::User).await;
 
         let group = create_test_group(storage.clone(), "test_group").await;
         create_test_user_group(storage.clone(), normal_user.id, group.id, true).await;
@@ -606,8 +612,10 @@ mod tests {
     #[tokio::test]
     async fn test_public_region_access() {
         let storage = setup_test_db().await;
-        let user1 = create_test_user(storage.clone(), "user1@test.com", "test", false).await;
-        let user2 = create_test_user(storage.clone(), "user2@test.com", "test", false).await;
+        let user1 =
+            create_test_user(storage.clone(), "user1@test.com", "test", &UserRole::User).await;
+        let user2 =
+            create_test_user(storage.clone(), "user2@test.com", "test", &UserRole::User).await;
         let group = create_test_group(storage.clone(), "test_group").await;
         let private_region = create_test_region(
             storage.clone(),
@@ -676,9 +684,10 @@ mod tests {
     #[tokio::test]
     async fn test_device_permissions() {
         let storage = setup_test_db().await;
-        let owner_user = create_test_user(storage.clone(), "owner@test.com", "test", false).await;
+        let owner_user =
+            create_test_user(storage.clone(), "owner@test.com", "test", &UserRole::User).await;
         let visitor_user =
-            create_test_user(storage.clone(), "visitor@test.com", "test", false).await;
+            create_test_user(storage.clone(), "visitor@test.com", "test", &UserRole::User).await;
         let group = create_test_group(storage.clone(), "test_group").await;
 
         let region = create_test_region(
@@ -699,7 +708,7 @@ mod tests {
             storage.clone(),
             region.id,
             "test_device",
-            1,
+            &DeviceType::Window,
             json!({"status": "off"}),
         )
         .await;

@@ -2,7 +2,7 @@ use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
-use lumisync_api::restful::UserRole;
+use lumisync_api::UserRole;
 use serde::{Deserialize, Serialize};
 
 use crate::configs::Auth;

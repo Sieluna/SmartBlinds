@@ -2,7 +2,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
-use lumisync_api::restful::{LoginRequest, RegisterRequest};
+use lumisync_api::models::{LoginRequest, RegisterRequest};
 use serde_json::json;
 
 mod common;
@@ -158,7 +158,7 @@ async fn test_get_current_user() {
     let user_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(user_response["email"], json!("admin@test.com"));
-    assert_eq!(user_response["role"], json!("user"));
+    assert_eq!(user_response["role"], json!("admin"));
 
     let request = Request::builder()
         .uri("/api/auth/me")

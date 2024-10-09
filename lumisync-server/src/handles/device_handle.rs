@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, put};
 use axum::{middleware, Extension, Json, Router};
-use lumisync_api::restful::*;
+use lumisync_api::models::*;
 use serde_json::{json, Value};
 
 use crate::middlewares::{auth, TokenState};
@@ -95,7 +95,7 @@ pub async fn create_device(
         id: 0,
         region_id,
         name: body.name.clone(),
-        device_type: body.device_type,
+        device_type: body.device_type.to_string(),
         location: body.location.clone(),
         status: json!({}), // Initial status is empty
     };
@@ -128,7 +128,7 @@ pub async fn create_device(
         id: created_device.id,
         region_id: created_device.region_id,
         name: created_device.name,
-        device_type: created_device.device_type,
+        device_type: created_device.device_type.into(),
         location: created_device.location,
         status: created_device.status,
     };
@@ -190,7 +190,7 @@ pub async fn get_devices_by_region_id(
             id: device.id,
             region_id: device.region_id,
             name: device.name,
-            device_type: device.device_type,
+            device_type: device.device_type.into(),
             location: device.location,
             status: device.status,
         })
@@ -258,7 +258,7 @@ pub async fn get_device_by_id(
         id: device.id,
         region_id: device.region_id,
         name: device.name,
-        device_type: device.device_type,
+        device_type: device.device_type.into(),
         location: device.location.clone(),
         status: device.status.clone(),
     };
@@ -361,7 +361,7 @@ pub async fn update_device(
         id: updated_device.id,
         region_id: updated_device.region_id,
         name: updated_device.name,
-        device_type: updated_device.device_type,
+        device_type: updated_device.device_type.into(),
         location: updated_device.location,
         status: updated_device.status,
     };

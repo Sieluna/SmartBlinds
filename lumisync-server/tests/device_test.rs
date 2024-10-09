@@ -2,9 +2,9 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
-use lumisync_api::restful::{CreateDeviceRequest, UpdateDeviceRequest};
+use lumisync_api::models::{CreateDeviceRequest, DeviceType, UpdateDeviceRequest};
 use lumisync_server::tests::{create_test_group, create_test_region, create_test_user_group};
-use serde_json::{json, Value};
+use serde_json::json;
 
 mod common;
 use common::mock_app::MockApp;
@@ -33,7 +33,7 @@ async fn test_create_device() {
         .body(Body::from(
             serde_json::to_string(&CreateDeviceRequest {
                 name: "Test Device 1".to_string(),
-                device_type: 1, // Assuming 1 represents smart blinds
+                device_type: DeviceType::Window,
                 location: json!("Bedroom Window"),
                 region_id: region.id,
             })
@@ -50,7 +50,7 @@ async fn test_create_device() {
     let device_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(device_response["name"], json!("Test Device 1"));
-    assert_eq!(device_response["device_type"], json!(1));
+    assert_eq!(device_response["device_type"], json!("window"));
     assert_eq!(device_response["location"], json!("Bedroom Window"));
     assert_eq!(device_response["region_id"], json!(region.id));
 
@@ -63,7 +63,7 @@ async fn test_create_device() {
         .body(Body::from(
             serde_json::to_string(&CreateDeviceRequest {
                 name: "Test Device 1".to_string(),
-                device_type: 1,
+                device_type: DeviceType::Window,
                 location: json!("Living Room Window"),
                 region_id: region.id,
             })
@@ -100,7 +100,7 @@ async fn test_get_devices_by_region_id() {
         .body(Body::from(
             serde_json::to_string(&CreateDeviceRequest {
                 name: "List Test Device".to_string(),
-                device_type: 2,
+                device_type: DeviceType::Sensor,
                 location: json!("Living Room"),
                 region_id: region.id,
             })
@@ -173,7 +173,7 @@ async fn test_get_device_by_id() {
         .body(Body::from(
             serde_json::to_string(&CreateDeviceRequest {
                 name: "Detail Test Device".to_string(),
-                device_type: 3,
+                device_type: DeviceType::Sensor,
                 location: json!("Study"),
                 region_id: region.id,
             })
@@ -251,7 +251,7 @@ async fn test_update_device() {
         .body(Body::from(
             serde_json::to_string(&CreateDeviceRequest {
                 name: "Device To Update".to_string(),
-                device_type: 1,
+                device_type: DeviceType::Window,
                 location: json!("Original Location"),
                 region_id: region.id,
             })
@@ -325,7 +325,7 @@ async fn test_delete_device() {
         .body(Body::from(
             serde_json::to_string(&CreateDeviceRequest {
                 name: "Device To Delete".to_string(),
-                device_type: 4,
+                device_type: DeviceType::Sensor,
                 location: json!("Hallway"),
                 region_id: region.id,
             })
@@ -393,7 +393,7 @@ async fn test_update_device_status() {
         .body(Body::from(
             serde_json::to_string(&CreateDeviceRequest {
                 name: "Status Test Device".to_string(),
-                device_type: 1,
+                device_type: DeviceType::Window,
                 location: json!("Kitchen"),
                 region_id: region.id,
             })

@@ -2,7 +2,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
-use lumisync_api::restful::{CreateRegionRequest, UpdateRegionSettingRequest};
+use lumisync_api::models::{CreateRegionRequest, UpdateRegionSettingRequest};
 use lumisync_server::tests::{create_test_group, create_test_region, create_test_user_group};
 use serde_json::json;
 

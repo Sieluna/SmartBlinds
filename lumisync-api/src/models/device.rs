@@ -8,12 +8,32 @@ use time::OffsetDateTime;
 use super::{Id, SensorData, WindowData};
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum DeviceType {
+    /// Environmental sensor
+    #[default]
+    Sensor,
     /// Smart window device
     Window,
-    /// Environmental sensor
-    Sensor,
+}
+
+impl From<String> for DeviceType {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "window" => DeviceType::Window,
+            _ => DeviceType::Sensor,
+        }
+    }
+}
+
+impl core::fmt::Display for DeviceType {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            DeviceType::Sensor => write!(f, "sensor"),
+            DeviceType::Window => write!(f, "window"),
+        }
+    }
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
