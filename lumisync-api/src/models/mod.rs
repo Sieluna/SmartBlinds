@@ -4,6 +4,7 @@ mod device;
 mod group;
 mod message;
 mod region;
+mod settings;
 
 pub use auth::*;
 pub use control::*;
@@ -11,6 +12,7 @@ pub use device::*;
 pub use group::*;
 pub use message::*;
 pub use region::*;
+pub use settings::*;
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -35,24 +37,4 @@ pub struct SensorData {
 pub struct WindowData {
     /// Window position percentage (0-100)
     pub target_position: u8,
-}
-
-#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegionSettingData {
-    /// Target light intensity range in lux
-    pub light_range: (i32, i32),
-    /// Target temperature range in Celsius
-    pub temperature_range: (f32, f32),
-    /// Time period for these settings
-    pub time_range: (OffsetDateTime, OffsetDateTime),
-}
-
-#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowSettingData {
-    /// Target position range in percentage
-    pub window_position: (u8, u8),
-    /// Time period for these settings
-    pub time_range: (OffsetDateTime, OffsetDateTime),
 }

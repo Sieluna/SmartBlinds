@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use super::control::Command;
 use super::device::DeviceStatus;
-use super::{Id, RegionSettingData, WindowData, WindowSettingData};
+use super::settings::{RegionSettingData, WindowSettingData};
+use super::{Id, WindowData};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {

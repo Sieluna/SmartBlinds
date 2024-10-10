@@ -25,8 +25,11 @@ pub struct MockApp {
     pub user_repository: Arc<UserRepository>,
     pub group_repository: Arc<GroupRepository>,
     pub region_repository: Arc<RegionRepository>,
+    pub region_setting_repository: Arc<RegionSettingRepository>,
     pub user_region_repository: Arc<UserRegionRepository>,
     pub device_repository: Arc<DeviceRepository>,
+    pub device_record_repository: Arc<DeviceRecordRepository>,
+    pub device_setting_repository: Arc<DeviceSettingRepository>,
 }
 
 impl MockApp {
@@ -54,8 +57,11 @@ impl MockApp {
         let user_repository = Arc::new(UserRepository::new(storage.clone()));
         let group_repository = Arc::new(GroupRepository::new(storage.clone()));
         let region_repository = Arc::new(RegionRepository::new(storage.clone()));
+        let region_setting_repository = Arc::new(RegionSettingRepository::new(storage.clone()));
         let user_region_repository = Arc::new(UserRegionRepository::new(storage.clone()));
         let device_repository = Arc::new(DeviceRepository::new(storage.clone()));
+        let device_record_repository = Arc::new(DeviceRecordRepository::new(storage.clone()));
+        let device_setting_repository = Arc::new(DeviceSettingRepository::new(storage.clone()));
 
         let password_hash = auth_service.hash("test").unwrap();
 
@@ -80,8 +86,11 @@ impl MockApp {
             user_repository,
             group_repository,
             region_repository,
+            region_setting_repository,
             user_region_repository,
             device_repository,
+            device_record_repository,
+            device_setting_repository,
         }
     }
 
@@ -147,6 +156,7 @@ impl MockApp {
             group_repository: self.group_repository.clone(),
             device_repository: self.device_repository.clone(),
             user_region_repository: self.user_region_repository.clone(),
+            region_setting_repository: self.region_setting_repository.clone(),
             permission_service: self.permission_service.clone(),
         };
 
@@ -164,6 +174,8 @@ impl MockApp {
         let device_state = DeviceState {
             device_repository: self.device_repository.clone(),
             region_repository: self.region_repository.clone(),
+            device_record_repository: self.device_record_repository.clone(),
+            device_setting_repository: self.device_setting_repository.clone(),
             permission_service: self.permission_service.clone(),
         };
 

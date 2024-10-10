@@ -2,9 +2,10 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
-use serde_json;
+use serde_json::Value;
 use time::OffsetDateTime;
 
+use super::settings::{SensorSettingData, SettingResponse, WindowSettingData};
 use super::{Id, SensorData, WindowData};
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
@@ -46,7 +47,7 @@ pub struct CreateDeviceRequest {
     /// Device category
     pub device_type: DeviceType,
     /// Device location data
-    pub location: serde_json::Value,
+    pub location: Value,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
@@ -57,7 +58,7 @@ pub struct UpdateDeviceRequest {
     /// New device category
     pub device_type: Option<DeviceType>,
     /// New location data
-    pub location: Option<serde_json::Value>,
+    pub location: Option<Value>,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
@@ -68,7 +69,7 @@ pub struct DeviceRecordResponse {
     /// Device identifier
     pub device_id: Id,
     /// Record data
-    pub data: serde_json::Value,
+    pub data: Value,
     /// Record time
     pub time: OffsetDateTime,
 }
@@ -81,7 +82,7 @@ pub struct DeviceSettingResponse {
     /// Device identifier
     pub device_id: Id,
     /// Setting data
-    pub setting: serde_json::Value,
+    pub setting: Value,
     /// Start time
     pub start: OffsetDateTime,
     /// End time
@@ -100,9 +101,9 @@ pub struct DeviceInfoResponse {
     /// Device category
     pub device_type: DeviceType,
     /// Device location data
-    pub location: serde_json::Value,
+    pub location: Value,
     /// Current status data
-    pub status: serde_json::Value,
+    pub status: Value,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
@@ -112,7 +113,7 @@ pub struct DeviceResponse {
     #[serde(flatten)]
     pub info: DeviceInfoResponse,
     /// Device settings list
-    pub settings: Vec<DeviceSettingResponse>,
+    pub settings: Vec<DeviceSettingUnion>,
     /// Device records list
     pub records: Vec<DeviceRecordResponse>,
 }
@@ -147,4 +148,14 @@ pub struct DeviceStatus {
     pub battery: u8,
     /// Last update time
     pub updated_at: OffsetDateTime,
+}
+
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeviceSettingUnion {
+    /// Window device settings
+    Window(SettingResponse<WindowSettingData>),
+    /// Sensor device settings
+    Sensor(SettingResponse<SensorSettingData>),
 }

@@ -142,6 +142,7 @@ pub async fn create_app(settings: &Arc<Settings>) -> Router {
     let device_repository = Arc::new(DeviceRepository::new(storage.clone()));
     let device_record_repository = Arc::new(DeviceRecordRepository::new(storage.clone()));
     let device_setting_repository = Arc::new(DeviceSettingRepository::new(storage.clone()));
+    let region_setting_repository = Arc::new(RegionSettingRepository::new(storage.clone()));
 
     let auth_service = Arc::new(AuthService::new());
     let token_service = Arc::new(TokenService::new(settings.auth.clone()));
@@ -172,12 +173,15 @@ pub async fn create_app(settings: &Arc<Settings>) -> Router {
         group_repository: group_repository.clone(),
         device_repository: device_repository.clone(),
         permission_service: permission_service.clone(),
+        region_setting_repository: region_setting_repository.clone(),
     };
 
     let device_state = DeviceState {
         device_repository: device_repository.clone(),
         region_repository: region_repository.clone(),
         permission_service: permission_service.clone(),
+        device_setting_repository: device_setting_repository.clone(),
+        device_record_repository: device_record_repository.clone(),
     };
 
     Router::new()

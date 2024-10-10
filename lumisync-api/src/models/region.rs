@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Id;
 use super::device::DeviceInfoResponse;
+use super::settings::{RegionSettingData, SettingResponse};
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,7 +46,7 @@ pub struct CreateRegionRequest {
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateRegionSettingRequest {
+pub struct UpdateRegionRequest {
     /// New region name
     pub name: Option<String>,
 }
@@ -75,6 +76,8 @@ pub struct RegionResponse {
     pub humidity: f32,
     /// User access list
     pub users: BTreeMap<Id, RegionRole>,
+    /// Region settings list
+    pub settings: Vec<SettingResponse<RegionSettingData>>,
     /// Associated devices
     pub devices: Vec<DeviceInfoResponse>,
 }

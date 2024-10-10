@@ -2,7 +2,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
-use lumisync_api::models::{CreateRegionRequest, UpdateRegionSettingRequest};
+use lumisync_api::models::{CreateRegionRequest, UpdateRegionRequest};
 use lumisync_server::tests::{create_test_group, create_test_region, create_test_user_group};
 use serde_json::json;
 
@@ -174,7 +174,7 @@ async fn test_update_region() {
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::from(
-            serde_json::to_string(&UpdateRegionSettingRequest {
+            serde_json::to_string(&UpdateRegionRequest {
                 name: Some("Updated Region".to_string()),
             })
             .unwrap(),

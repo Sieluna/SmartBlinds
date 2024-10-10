@@ -9,12 +9,14 @@ use serde_json::{json, Value};
 
 use crate::middlewares::{auth, TokenState};
 use crate::models::Device;
-use crate::repositories::{DeviceRepository, RegionRepository};
+use crate::repositories::{DeviceRepository, RegionRepository, DeviceSettingRepository, DeviceRecordRepository};
 use crate::services::{Permission, PermissionService, ResourceType, TokenClaims};
 
 #[derive(Clone)]
 pub struct DeviceState {
     pub device_repository: Arc<DeviceRepository>,
+    pub device_record_repository: Arc<DeviceRecordRepository>,
+    pub device_setting_repository: Arc<DeviceSettingRepository>,
     pub region_repository: Arc<RegionRepository>,
     pub permission_service: Arc<PermissionService>,
 }
@@ -248,11 +250,54 @@ pub async fn get_device_by_id(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    // Get device settings and records
-    // Note: Should implement logic to retrieve device settings and records
-    // Using empty lists for simplification
-    let settings: Vec<DeviceSettingResponse> = Vec::new();
-    let records: Vec<DeviceRecordResponse> = Vec::new();
+    // Get device settings
+    let device_settings = state
+        .device_setting_repository
+        .find_by_device_id(device_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut settings: Vec<DeviceSettingUnion> = Vec::new();
+    for device_setting in device_settings {
+        if device.device_type == DeviceType::Window.to_string() {
+            if let Ok(window_data) = serde_json::from_value::<WindowSettingData>(device_setting.setting.clone()) {
+                let setting_response = SettingResponse {
+                    id: device_setting.id,
+                    target_id: device_setting.device_id,
+                    data: window_data,
+                    start_time: device_setting.start,
+                    end_time: device_setting.end,
+                };
+                settings.push(DeviceSettingUnion::Window(setting_response));
+            }
+        } else {
+            if let Ok(sensor_data) = serde_json::from_value::<SensorSettingData>(device_setting.setting.clone()) {
+                let setting_response = SettingResponse {
+                    id: device_setting.id,
+                    target_id: device_setting.device_id,
+                    data: sensor_data,
+                    start_time: device_setting.start,
+                    end_time: device_setting.end,
+                };
+                settings.push(DeviceSettingUnion::Sensor(setting_response));
+            }
+        }
+    }
+    
+    // Get device records
+    let records = state
+        .device_record_repository
+        .find_by_device_id(device_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .into_iter()
+        .map(|record| DeviceRecordResponse {
+            id: record.id,
+            device_id: record.device_id,
+            data: record.data,
+            time: record.time,
+        })
+        .collect();
 
     let device_info = DeviceInfoResponse {
         id: device.id,

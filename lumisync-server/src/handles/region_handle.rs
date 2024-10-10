@@ -15,6 +15,7 @@ use crate::services::{Permission, PermissionService, ResourceType, TokenClaims};
 pub struct RegionState {
     pub user_region_repository: Arc<UserRegionRepository>,
     pub region_repository: Arc<RegionRepository>,
+    pub region_setting_repository: Arc<RegionSettingRepository>,
     pub group_repository: Arc<GroupRepository>,
     pub device_repository: Arc<DeviceRepository>,
     pub permission_service: Arc<PermissionService>,
@@ -257,7 +258,7 @@ pub async fn get_region_by_id(
     params(
         ("region_id" = i32, Path, description = "Region ID")
     ),
-    request_body = UpdateRegionSettingRequest,
+    request_body = UpdateRegionRequest,
     security(
         ("bearer_auth" = [])
     ),
@@ -274,7 +275,7 @@ pub async fn update_region(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<RegionState>,
     Path(region_id): Path<i32>,
-    Json(body): Json<UpdateRegionSettingRequest>,
+    Json(body): Json<UpdateRegionRequest>,
 ) -> Result<Json<RegionResponse>, StatusCode> {
     let current_user_id = token_data.sub;
 
@@ -531,8 +532,7 @@ async fn build_region_response(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Convert devices to API response format
-    let device_responses: Vec<DeviceInfoResponse> = devices
+    let devices: Vec<DeviceInfoResponse> = devices
         .into_iter()
         .map(|device| DeviceInfoResponse {
             id: device.id,
@@ -541,6 +541,31 @@ async fn build_region_response(
             device_type: device.device_type.into(),
             location: device.location.clone(),
             status: device.status.clone(),
+        })
+        .collect();
+
+    let region_settings = state
+        .region_setting_repository
+        .find_by_region_id(region.id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let settings = region_settings
+        .into_iter()
+        .map(|setting| {
+            let data = RegionSettingData {
+                light_range: (setting.min_light, setting.max_light),
+                temperature_range: (setting.min_temperature, setting.max_temperature),
+                humidity_range: (f32::NAN, f32::NAN),
+            };
+            
+            SettingResponse {
+                id: setting.id,
+                target_id: setting.region_id,
+                data,
+                start_time: setting.start,
+                end_time: setting.end,
+            }
         })
         .collect();
 
@@ -555,7 +580,8 @@ async fn build_region_response(
         temperature: region.temperature,
         humidity: region.humidity,
         users: user_roles.into_iter().collect(),
-        devices: device_responses,
+        settings,
+        devices,
     };
 
     Ok(region_response)
