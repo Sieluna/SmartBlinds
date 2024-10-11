@@ -1,3 +1,4 @@
+use core::f32::consts::SQRT_2;
 use core::time::Duration;
 
 use super::{Direction, Motor};
@@ -35,7 +36,7 @@ where
             last_step_time: Duration::ZERO,
             direction: Direction::CounterClockwise,
             step_count: 0,
-            initial_step_delay: Duration::from_micros((0.676 * 2.0f32.sqrt() * 1_000_000.0) as u64),
+            initial_step_delay: Duration::from_micros((0.676 * SQRT_2 * 1_000_000.0) as u64),
             current_step_delay: Duration::ZERO,
             min_step_delay: Duration::from_micros(1_000_000),
         }
@@ -90,8 +91,9 @@ where
         let acceleration = acceleration.abs();
         if self.acceleration != acceleration {
             self.step_count = (self.step_count as f32 * (self.acceleration / acceleration)) as i64;
-            self.initial_step_delay =
-                Duration::from_micros((0.676 * (2.0 / acceleration).sqrt() * 1_000_000.0) as u64);
+            self.initial_step_delay = Duration::from_micros(
+                (0.676 * libm::sqrtf(2.0 / acceleration) * 1_000_000.0) as u64,
+            );
             self.acceleration = acceleration;
             self.recalculate_speed();
         }
