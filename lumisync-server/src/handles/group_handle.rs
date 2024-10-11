@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{middleware, Extension, Json, Router};
 use lumisync_api::models::*;
 use time::OffsetDateTime;
 
+use crate::errors::{ApiError, AuthError, GroupError};
 use crate::middlewares::{auth, TokenState};
 use crate::models::Group;
 use crate::repositories::{GroupRepository, RegionRepository, UserRepository};
@@ -51,7 +52,7 @@ pub async fn create_group(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<GroupState>,
     Json(body): Json<CreateGroupRequest>,
-) -> Result<Json<GroupResponse>, StatusCode> {
+) -> Result<Json<GroupResponse>, ApiError> {
     let current_user_id = token_data.sub;
 
     // Use permission service to check if user is an administrator
@@ -59,19 +60,19 @@ pub async fn create_group(
         .permission_service
         .is_admin(current_user_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Failed to check admin status: {}", e))?;
 
     if !is_admin {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(AuthError::InsufficientPermission.into());
     }
 
     if body.name.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(GroupError::InvalidRequest.into());
     }
 
     // Check if group name already exists
     if let Ok(Some(_)) = state.group_repository.find_by_name(&body.name).await {
-        return Err(StatusCode::CONFLICT);
+        return Err(GroupError::GroupNameExists.into());
     }
 
     // Create group
@@ -88,30 +89,26 @@ pub async fn create_group(
     users_to_add.sort_unstable();
     users_to_add.dedup();
 
-    let mut tx = state
-        .user_repository
-        .get_pool()
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Check if user count exceeds limit
+    if users_to_add.len() > 100 {
+        return Err(GroupError::GroupUserLimitExceeded.into());
+    }
+
+    let mut tx = state.user_repository.get_pool().begin().await?;
 
     let group_id = state
         .group_repository
         .create_with_user(&group, users_to_add, &mut tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await?;
 
     // Get created group
     let created_group = state
         .group_repository
         .find_by_id(group_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?
+        .ok_or(GroupError::GroupNotFound)?;
 
     let group_response = GroupResponse {
         id: created_group.id,
@@ -140,25 +137,20 @@ pub async fn create_group(
 pub async fn get_user_groups(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<GroupState>,
-) -> Result<Json<Vec<GroupResponse>>, StatusCode> {
+) -> Result<Json<Vec<GroupResponse>>, ApiError> {
     let current_user_id = token_data.sub;
 
     // Get groups where the user is a member
     let groups = state
         .group_repository
         .find_by_user_id(current_user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     let mut group_responses = Vec::with_capacity(groups.len());
 
     for group in groups {
         // Get group's region list
-        let regions = state
-            .region_repository
-            .find_by_group_id(group.id)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let regions = state.region_repository.find_by_group_id(group.id).await?;
 
         let region_responses: Vec<RegionInfoResponse> = regions
             .into_iter()
@@ -205,11 +197,11 @@ pub async fn get_group_by_id(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<GroupState>,
     Path(group_id): Path<i32>,
-) -> Result<Json<GroupResponse>, StatusCode> {
+) -> Result<Json<GroupResponse>, ApiError> {
     let current_user_id = token_data.sub;
 
     // Check permissions
-    if !state
+    let has_permission = state
         .permission_service
         .check_permission(
             current_user_id,
@@ -218,25 +210,21 @@ pub async fn get_group_by_id(
             Permission::VIEW,
         )
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    {
-        return Err(StatusCode::FORBIDDEN);
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(GroupError::InsufficientPermission.into());
     }
 
     // Get group information
     let group = state
         .group_repository
         .find_by_id(group_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(GroupError::GroupNotFound)?;
 
     // Get group's region list
-    let regions = state
-        .region_repository
-        .find_by_group_id(group_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let regions = state.region_repository.find_by_group_id(group_id).await?;
 
     let region_responses: Vec<RegionInfoResponse> = regions
         .into_iter()
@@ -283,7 +271,7 @@ pub async fn update_group(
     State(state): State<GroupState>,
     Path(group_id): Path<i32>,
     Json(body): Json<CreateGroupRequest>,
-) -> Result<Json<GroupResponse>, StatusCode> {
+) -> Result<Json<GroupResponse>, ApiError> {
     let current_user_id = token_data.sub;
 
     // Use permission service to check if user has permission to manage the group
@@ -296,47 +284,38 @@ pub async fn update_group(
             Permission::GROUP_MANAGE_SETTINGS,
         )
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
 
     if !can_update {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(GroupError::InsufficientPermission.into());
+    }
+
+    if body.name.is_empty() {
+        return Err(GroupError::InvalidRequest.into());
     }
 
     // Get existing group
     let mut group = state
         .group_repository
         .find_by_id(group_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(GroupError::GroupNotFound)?;
 
     // Update group information
     group.name = body.name.clone();
     group.description = body.description.clone();
 
-    let mut tx = state
-        .user_repository
-        .get_pool()
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.user_repository.get_pool().begin().await?;
 
     state
         .group_repository
         .update(group_id, &group, &mut tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await?;
 
     // Get group's region list
-    let regions = state
-        .region_repository
-        .find_by_group_id(group_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let regions = state.region_repository.find_by_group_id(group_id).await?;
 
     let region_responses: Vec<RegionInfoResponse> = regions
         .into_iter()
@@ -380,7 +359,7 @@ pub async fn delete_group(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<GroupState>,
     Path(group_id): Path<i32>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<axum::http::StatusCode, ApiError> {
     let current_user_id = token_data.sub;
 
     // Use permission service to check if user has permission to delete the group
@@ -393,36 +372,24 @@ pub async fn delete_group(
             Permission::DELETE,
         )
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
 
     if !can_delete {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(GroupError::InsufficientPermission.into());
     }
 
     // Check if group exists
     let _ = state
         .group_repository
         .find_by_id(group_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(GroupError::GroupNotFound)?;
 
-    let mut tx = state
-        .user_repository
-        .get_pool()
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.user_repository.get_pool().begin().await?;
 
-    state
-        .group_repository
-        .delete(group_id, &mut tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    state.group_repository.delete(group_id, &mut tx).await?;
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await?;
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }

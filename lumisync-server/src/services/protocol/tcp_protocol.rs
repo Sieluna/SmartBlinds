@@ -1,82 +1,115 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use async_trait::async_trait;
-use lumisync_api::Message;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use lumisync_api::{Message, Protocol, SerializationProtocol};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use super::MessageProtocol;
 
-/// TCP Protocol Adapter
+const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
+const CHANNEL_CAPACITY: usize = 1000;
+const BUFFER_SIZE: usize = 8 * 1024; // 8KB
+
 #[derive(Debug)]
 pub struct TcpProtocol {
     /// TCP server address
     addr: SocketAddr,
     /// Device connection management
-    devices: Arc<Mutex<HashMap<i32, mpsc::Sender<Vec<u8>>>>>,
+    devices: Arc<RwLock<HashMap<i32, mpsc::Sender<Vec<u8>>>>>,
     /// Device message broadcast channel
     device_tx: Arc<broadcast::Sender<Message>>,
     /// Stop server sender
     stop_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    /// Serialization protocol
+    protocol: SerializationProtocol,
 }
 
 impl TcpProtocol {
     pub fn new(addr: SocketAddr) -> Self {
-        let (device_tx, _) = broadcast::channel(100);
+        let (device_tx, _) = broadcast::channel(CHANNEL_CAPACITY);
         Self {
             addr,
-            devices: Arc::new(Mutex::new(HashMap::new())),
+            devices: Arc::new(RwLock::new(HashMap::new())),
             device_tx: Arc::new(device_tx),
             stop_tx: Arc::new(Mutex::new(None)),
+            protocol: Default::default(),
         }
     }
 
-    /// Handle new TCP connection
+    pub fn with_protocol(mut self, protocol: SerializationProtocol) -> Self {
+        self.protocol = protocol;
+        self
+    }
+
+    pub fn protocol(&self) -> &SerializationProtocol {
+        &self.protocol
+    }
+
     async fn handle_connection(
         stream: TcpStream,
         addr: SocketAddr,
-        devices: Arc<Mutex<HashMap<i32, mpsc::Sender<Vec<u8>>>>>,
+        devices: Arc<RwLock<HashMap<i32, mpsc::Sender<Vec<u8>>>>>,
         device_tx: Arc<broadcast::Sender<Message>>,
+        protocol: SerializationProtocol,
     ) {
-        // In real scenarios, there should be an authentication mechanism
-        let (mut reader, mut writer) = stream.into_split();
+        let (reader_half, writer_half) = stream.into_split();
+        let mut reader = BufReader::with_capacity(BUFFER_SIZE, reader_half);
+        let mut writer = BufWriter::with_capacity(BUFFER_SIZE, writer_half);
 
-        // Read device ID (simplified example)
+        // Read device ID
         let mut id_buffer = [0u8; 4];
         if let Err(e) = reader.read_exact(&mut id_buffer).await {
-            tracing::error!("Failed to read device ID: {}", e);
+            tracing::error!("Failed to read device ID from {}: {}", addr, e);
             return;
         }
 
         let device_id = i32::from_be_bytes(id_buffer);
         tracing::info!("Device {} connected from {}", device_id, addr);
 
-        // Create send channel
-        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(100);
+        // Create send channel with increased capacity
+        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(CHANNEL_CAPACITY);
 
         // Register device
         {
-            let mut devices_map = devices.lock().unwrap();
+            let mut devices_map = devices.write().unwrap();
+            if devices_map.contains_key(&device_id) {
+                tracing::warn!(
+                    "Device {} already connected, replacing existing connection",
+                    device_id
+                );
+            }
             devices_map.insert(device_id, tx);
         }
 
         // Subscribe to device message broadcast
         let mut device_rx = device_tx.subscribe();
 
-        // Task to send messages to device
         let send_task = tokio::spawn(async move {
+            // Pre-allocate write buffer
+            let mut buffer = Vec::with_capacity(BUFFER_SIZE);
+
             while let Some(data) = rx.recv().await {
-                // Add length prefix
+                buffer.clear();
+
+                // Prepare message with length prefix
                 let len = data.len() as u32;
-                if writer.write_all(&len.to_be_bytes()).await.is_err() {
+                buffer.extend_from_slice(&len.to_be_bytes());
+                buffer.extend_from_slice(&data);
+
+                // Write entire message at once to reduce system calls
+                if let Err(e) = writer.write_all(&buffer).await {
+                    tracing::warn!("Failed to write data to device {}: {}", device_id, e);
                     break;
                 }
 
-                if writer.write_all(&data).await.is_err() {
+                // Flush buffer to ensure data is sent
+                if let Err(e) = writer.flush().await {
+                    tracing::warn!("Failed to flush data to device {}: {}", device_id, e);
                     break;
                 }
             }
@@ -85,64 +118,118 @@ impl TcpProtocol {
         // Task to handle broadcast messages
         let devices_for_broadcast = devices.clone();
         let device_id_for_broadcast = device_id;
+        let protocol_clone = protocol.clone();
         let broadcast_task = tokio::spawn(async move {
             while let Ok(device_frame) = device_rx.recv().await {
-                // Forward based on target device ID (simplified here, in reality should extract target device ID from message)
-                if let Ok(bin) = bincode::serialize(&device_frame) {
-                    // Get sender to avoid holding lock during await
-                    let tx = {
-                        let devices_guard = devices_for_broadcast.lock().unwrap();
-                        devices_guard.get(&device_id_for_broadcast).cloned()
-                    };
+                // Serialize message
+                match protocol_clone.serialize(&device_frame) {
+                    Ok(bin) => {
+                        // Use RwLock to get sender
+                        let tx = {
+                            let devices_guard = devices_for_broadcast.read().unwrap();
+                            devices_guard.get(&device_id_for_broadcast).cloned()
+                        };
 
-                    // If sender found, send message
-                    if let Some(tx) = tx {
-                        let _ = tx.send(bin).await;
+                        // Send serialized message
+                        if let Some(tx) = tx {
+                            if let Err(e) = tx.send(bin).await {
+                                tracing::warn!(
+                                    "Failed to send broadcast message to device {}: {:?}",
+                                    device_id_for_broadcast,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to serialize message for device {}: {:?}",
+                            device_id_for_broadcast,
+                            e
+                        );
                     }
                 }
             }
         });
 
+        // Pre-allocate read buffer
+        let mut len_buffer = [0u8; 4];
+        let mut message_buffer = Vec::with_capacity(BUFFER_SIZE);
+        let protocol_for_reader = protocol.clone();
+
         // Handle messages from device
         loop {
-            // Read message length
-            let mut len_buffer = [0u8; 4];
             match reader.read_exact(&mut len_buffer).await {
                 Ok(_) => {
                     let len = u32::from_be_bytes(len_buffer) as usize;
-                    let mut buffer = vec![0u8; len];
 
-                    match reader.read_exact(&mut buffer).await {
+                    // Validate message length to prevent DoS attacks
+                    if len > MAX_MESSAGE_SIZE {
+                        tracing::warn!(
+                            "Received oversized message ({} bytes) from device {}",
+                            len,
+                            device_id
+                        );
+                        break;
+                    }
+
+                    // Reuse buffer, avoid frequent memory allocation
+                    if message_buffer.capacity() < len {
+                        message_buffer.reserve(len - message_buffer.capacity());
+                    }
+                    message_buffer.resize(len, 0);
+
+                    match reader.read_exact(&mut message_buffer).await {
                         Ok(_) => {
-                            // Parse device message
-                            match bincode::deserialize::<Message>(&buffer) {
+                            // Deserialize directly on pre-allocated buffer
+                            match protocol_for_reader.deserialize::<Message>(&message_buffer) {
                                 Ok(frame) => {
                                     // Broadcast device message
-                                    let _ = device_tx.send(frame);
+                                    if let Err(e) = device_tx.send(frame) {
+                                        tracing::warn!(
+                                            "Failed to broadcast message from device {}: {:?}",
+                                            device_id,
+                                            e
+                                        );
+                                    }
                                 }
                                 Err(e) => {
-                                    tracing::error!("Failed to deserialize device message: {}", e);
+                                    tracing::error!(
+                                        "Failed to deserialize message from device {}: {:?}",
+                                        device_id,
+                                        e
+                                    );
                                 }
                             }
                         }
-                        Err(_) => break,
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to read message data from device {}: {}",
+                                device_id,
+                                e
+                            );
+                            break;
+                        }
                     }
                 }
-                Err(_) => break,
+                Err(e) => {
+                    tracing::debug!("Connection closed for device {}: {}", device_id, e);
+                    break;
+                }
             }
         }
 
         // Clean up device connection
         {
-            let mut devices_map = devices.lock().unwrap();
-            devices_map.remove(&device_id_for_broadcast);
+            let mut devices_map = devices.write().unwrap();
+            devices_map.remove(&device_id);
         }
 
         // Stop tasks
         send_task.abort();
         broadcast_task.abort();
 
-        tracing::info!("Device {} disconnected", device_id_for_broadcast);
+        tracing::info!("Device {} disconnected", device_id);
     }
 }
 
@@ -153,19 +240,25 @@ impl MessageProtocol for TcpProtocol {
     }
 
     async fn start(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let listener = TcpListener::bind(&self.addr).await?;
-        tracing::info!("TCP server listening on {}", self.addr);
+        let listener = TcpListener::bind(&self.addr).await.map_err(|e| {
+            tracing::error!("Failed to bind TCP listener to {}: {}", self.addr, e);
+            Box::new(e) as Box<dyn Error + Send + Sync>
+        })?;
+        tracing::info!(
+            "TCP server listening on {} with {} protocol",
+            self.addr,
+            self.protocol.name()
+        );
 
-        // Create stop signal channel
         let (stop_tx, stop_rx) = oneshot::channel();
         {
             let mut stop_tx_guard = self.stop_tx.lock().unwrap();
             *stop_tx_guard = Some(stop_tx);
         }
 
-        // Start server in new task
         let devices = self.devices.clone();
         let device_tx = self.device_tx.clone();
+        let protocol = self.protocol.clone();
         tokio::spawn(async move {
             let mut stop_fut = Box::pin(stop_rx);
 
@@ -178,10 +271,15 @@ impl MessageProtocol for TcpProtocol {
                     accept_result = listener.accept() => {
                         match accept_result {
                             Ok((stream, addr)) => {
+                                if let Err(e) = stream.set_nodelay(true) {
+                                    tracing::warn!("Failed to set TCP_NODELAY: {}", e);
+                                }
+
                                 let devices_clone = devices.clone();
                                 let device_tx_clone = device_tx.clone();
+                                let protocol_clone = protocol.clone();
                                 tokio::spawn(async move {
-                                    Self::handle_connection(stream, addr, devices_clone, device_tx_clone).await;
+                                    Self::handle_connection(stream, addr, devices_clone, device_tx_clone, protocol_clone).await;
                                 });
                             },
                             Err(e) => {
@@ -200,8 +298,7 @@ impl MessageProtocol for TcpProtocol {
         &self,
         _message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // TCP protocol doesn't directly handle application messages
-        // If needed, could convert to DeviceFrame and send
+        tracing::debug!("TCP protocol doesn't handle app messages directly");
         Ok(())
     }
 
@@ -209,21 +306,29 @@ impl MessageProtocol for TcpProtocol {
         &self,
         message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Send device message through broadcast channel
-        let _ = self.device_tx.send(message);
+        if let Err(e) = self.device_tx.send(message) {
+            tracing::warn!(
+                "Failed to send device message through broadcast channel: {:?}",
+                e
+            );
+        }
         Ok(())
     }
 
     async fn stop(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Send stop signal
+        tracing::info!("Stopping TCP protocol server");
+
         let mut stop_tx_guard = self.stop_tx.lock().unwrap();
         if let Some(tx) = stop_tx_guard.take() {
-            let _ = tx.send(());
+            if let Err(e) = tx.send(()) {
+                tracing::warn!("Failed to send stop signal: {:?}", e);
+            }
         }
 
-        // Clean up device connections
-        let mut devices = self.devices.lock().unwrap();
+        let mut devices = self.devices.write().unwrap();
+        let count = devices.len();
         devices.clear();
+        tracing::info!("Closed {} device connections", count);
 
         Ok(())
     }

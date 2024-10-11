@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use axum::extract::State;
-use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{middleware, Extension, Json, Router};
 use lumisync_api::models::*;
 
+use crate::errors::{ApiError, AuthError};
 use crate::middlewares::{auth, TokenState};
 use crate::models::User;
 use crate::repositories::{GroupRepository, UserRepository};
@@ -50,15 +51,15 @@ pub fn auth_router(auth_state: AuthState, token_state: TokenState) -> Router {
 pub async fn register(
     State(state): State<AuthState>,
     Json(body): Json<RegisterRequest>,
-) -> Result<String, StatusCode> {
+) -> Result<String, ApiError> {
     if let Ok(Some(_)) = state.user_repository.find_by_email(&body.email).await {
-        return Err(StatusCode::CONFLICT);
+        return Err(AuthError::EmailExists.into());
     }
 
     let hash_password = state
         .auth_service
         .hash(&body.password)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Failed to hash password: {}", e))?;
 
     let user = User {
         id: 0,
@@ -67,34 +68,22 @@ pub async fn register(
         role: UserRole::User.to_string(),
     };
 
-    let mut tx = state
-        .user_repository
-        .get_pool()
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.user_repository.get_pool().begin().await?;
 
-    let id = state
-        .user_repository
-        .create(&user, &mut tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let id = state.user_repository.create(&user, &mut tx).await?;
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await?;
 
     let created_user = state
         .user_repository
         .find_by_id(id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?
+        .ok_or(AuthError::UserNotFound)?;
 
     let token = state
         .token_service
         .generate_token(created_user)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| anyhow!("Failed to generate token: {}", e))?
         .token;
 
     Ok(token)
@@ -115,27 +104,26 @@ pub async fn register(
 pub async fn login(
     State(state): State<AuthState>,
     Json(body): Json<LoginRequest>,
-) -> Result<String, StatusCode> {
+) -> Result<String, ApiError> {
     let user = state
         .user_repository
         .find_by_email(&body.email)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(AuthError::UserNotFound)?;
 
     let result = state
         .auth_service
         .verify(&user, &body.password)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Failed to verify password: {}", e))?;
 
     if !result {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(AuthError::InvalidPassword.into());
     }
 
     let token = state
         .token_service
         .generate_token(user)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| anyhow!("Failed to generate token: {}", e))?
         .token;
 
     Ok(token)
@@ -157,11 +145,11 @@ pub async fn login(
 pub async fn refresh_token(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<AuthState>,
-) -> Result<String, StatusCode> {
+) -> Result<String, ApiError> {
     let token = state
         .token_service
         .generate_token(token_data)
-        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .map_err(|e| anyhow!("Failed to generate token: {}", e))?
         .token;
 
     Ok(token)
@@ -184,19 +172,14 @@ pub async fn refresh_token(
 pub async fn get_current_user(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<AuthState>,
-) -> Result<Json<UserResponse>, StatusCode> {
+) -> Result<Json<UserResponse>, ApiError> {
     let user = state
         .user_repository
         .find_by_id(token_data.sub)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(AuthError::UserNotFound)?;
 
-    let groups = state
-        .group_repository
-        .find_by_user_id(user.id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let groups = state.group_repository.find_by_user_id(user.id).await?;
 
     let group_responses: Vec<GroupResponse> = groups
         .into_iter()

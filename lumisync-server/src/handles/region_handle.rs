@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::routing::{get, put};
 use axum::{middleware, Extension, Json, Router};
 use lumisync_api::models::*;
 
+use crate::errors::{ApiError, GroupError, RegionError};
 use crate::middlewares::{auth, TokenState};
 use crate::models::Region;
 use crate::repositories::*;
@@ -67,7 +68,7 @@ pub async fn create_region(
     State(state): State<RegionState>,
     Path(group_id): Path<i32>,
     Json(body): Json<CreateRegionRequest>,
-) -> Result<Json<RegionInfoResponse>, StatusCode> {
+) -> Result<Json<RegionInfoResponse>, ApiError> {
     let current_user_id = token_data.sub;
 
     // Check if user has permission to manage the group
@@ -80,19 +81,26 @@ pub async fn create_region(
             Permission::GROUP_MANAGE_SETTINGS,
         )
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
 
     if !can_manage {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(RegionError::InsufficientPermission.into());
     }
 
     if body.name.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(RegionError::InvalidRequest.into());
     }
+
+    // Check if group exists
+    state
+        .group_repository
+        .find_by_id(group_id)
+        .await?
+        .ok_or(GroupError::GroupNotFound)?;
 
     // Check if region name already exists
     if let Ok(Some(_)) = state.region_repository.find_by_name(&body.name).await {
-        return Err(StatusCode::CONFLICT);
+        return Err(RegionError::RegionNameExists.into());
     }
 
     // Create region
@@ -106,30 +114,18 @@ pub async fn create_region(
         is_public: false, // Default to private region
     };
 
-    let mut tx = state
-        .region_repository
-        .get_pool()
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.region_repository.get_pool().begin().await?;
 
-    let region_id = state
-        .region_repository
-        .create(&region, &mut tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let region_id = state.region_repository.create(&region, &mut tx).await?;
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await?;
 
     // Get created region
     let created_region = state
         .region_repository
         .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
 
     let region_response = RegionInfoResponse {
         id: created_region.id,
@@ -162,8 +158,15 @@ pub async fn get_regions_by_group_id(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<RegionState>,
     Path(group_id): Path<i32>,
-) -> Result<Json<Vec<RegionInfoResponse>>, StatusCode> {
+) -> Result<Json<Vec<RegionInfoResponse>>, ApiError> {
     let current_user_id = token_data.sub;
+
+    // Check if group exists
+    state
+        .group_repository
+        .find_by_id(group_id)
+        .await?
+        .ok_or(GroupError::GroupNotFound)?;
 
     // Check if user has permission to view the group
     let can_view = state
@@ -175,18 +178,14 @@ pub async fn get_regions_by_group_id(
             Permission::VIEW,
         )
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
 
     if !can_view {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(RegionError::InsufficientPermission.into());
     }
 
     // Get all regions in the group
-    let regions = state
-        .region_repository
-        .find_by_group_id(group_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let regions = state.region_repository.find_by_group_id(group_id).await?;
 
     // Convert to API response format
     let region_responses: Vec<RegionInfoResponse> = regions
@@ -223,7 +222,7 @@ pub async fn get_region_by_id(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<RegionState>,
     Path(region_id): Path<i32>,
-) -> Result<Json<RegionResponse>, StatusCode> {
+) -> Result<Json<RegionResponse>, ApiError> {
     let current_user_id = token_data.sub;
 
     // Use permission service to check if user can access this region
@@ -231,19 +230,18 @@ pub async fn get_region_by_id(
         .permission_service
         .can_user_access_region(current_user_id, region_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
 
     if !can_access {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(RegionError::InsufficientPermission.into());
     }
 
     // Get region information
     let region = state
         .region_repository
         .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
 
     // Use helper function to build response
     let response = build_region_response(&state, &region).await?;
@@ -276,7 +274,7 @@ pub async fn update_region(
     State(state): State<RegionState>,
     Path(region_id): Path<i32>,
     Json(body): Json<UpdateRegionRequest>,
-) -> Result<Json<RegionResponse>, StatusCode> {
+) -> Result<Json<RegionResponse>, ApiError> {
     let current_user_id = token_data.sub;
 
     // Check if user has permission to update region settings
@@ -289,19 +287,18 @@ pub async fn update_region(
             Permission::UPDATE,
         )
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
 
     if !can_update {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(RegionError::InsufficientPermission.into());
     }
 
     // Get current region information
     let mut region = state
         .region_repository
         .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
 
     // Update region information
     if let Some(name) = body.name {
@@ -309,30 +306,21 @@ pub async fn update_region(
     }
 
     // Update region
-    let mut tx = state
-        .region_repository
-        .get_pool()
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.region_repository.get_pool().begin().await?;
 
     state
         .region_repository
         .update(region_id, &region, &mut tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await?;
 
     // Get updated region information
     let updated_region = state
         .region_repository
         .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
 
     // Use helper function to build response
     let response = build_region_response(&state, &updated_region).await?;
@@ -362,7 +350,7 @@ pub async fn delete_region(
     Extension(token_data): Extension<TokenClaims>,
     State(state): State<RegionState>,
     Path(region_id): Path<i32>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<axum::http::StatusCode, ApiError> {
     let current_user_id = token_data.sub;
 
     // Check if user has permission to delete the region
@@ -375,39 +363,27 @@ pub async fn delete_region(
             Permission::DELETE,
         )
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
 
     if !can_delete {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(RegionError::InsufficientPermission.into());
     }
 
     // Check if region exists
     let _ = state
         .region_repository
         .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
 
     // Delete region
-    let mut tx = state
-        .region_repository
-        .get_pool()
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.region_repository.get_pool().begin().await?;
 
-    state
-        .region_repository
-        .delete(region_id, &mut tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    state.region_repository.delete(region_id, &mut tx).await?;
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await?;
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(
@@ -435,7 +411,7 @@ pub async fn update_region_environment(
     State(state): State<RegionState>,
     Path(region_id): Path<i32>,
     Json(body): Json<serde_json::Value>,
-) -> Result<Json<RegionResponse>, StatusCode> {
+) -> Result<Json<RegionResponse>, ApiError> {
     let current_user_id = token_data.sub;
 
     // Check if user has permission to update region environment
@@ -448,19 +424,18 @@ pub async fn update_region_environment(
             Permission::UPDATE,
         )
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
 
     if !can_update {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(RegionError::InsufficientPermission.into());
     }
 
     // Get current region information
     let region = state
         .region_repository
         .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
 
     // Parse environment data
     let light = body
@@ -481,31 +456,28 @@ pub async fn update_region_environment(
         .map(|v| v as f32)
         .unwrap_or(region.humidity);
 
+    // Validate environment data
+    if light < 0 || temperature < -50.0 || temperature > 100.0 || humidity < 0.0 || humidity > 100.0
+    {
+        return Err(RegionError::InvalidEnvironmentData.into());
+    }
+
     // Update region environment data
-    let mut tx = state
-        .region_repository
-        .get_pool()
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.region_repository.get_pool().begin().await?;
 
     state
         .region_repository
         .update_environment_data(region_id, light, temperature, humidity, &mut tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await?;
 
     // Get latest region data
     let updated_region = state
         .region_repository
         .find_by_id(region_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
 
     // Use helper function to build response
     let response = build_region_response(&state, &updated_region).await?;
@@ -517,20 +489,15 @@ pub async fn update_region_environment(
 async fn build_region_response(
     state: &RegionState,
     region: &Region,
-) -> Result<RegionResponse, StatusCode> {
+) -> Result<RegionResponse, ApiError> {
     // Get all devices in the region
-    let devices = state
-        .device_repository
-        .find_by_region_id(region.id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let devices = state.device_repository.find_by_region_id(region.id).await?;
 
     // Get user roles in the region
     let user_roles = state
         .user_region_repository
         .get_region_roles_by_region_id(region.id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     let devices: Vec<DeviceInfoResponse> = devices
         .into_iter()
@@ -547,8 +514,7 @@ async fn build_region_response(
     let region_settings = state
         .region_setting_repository
         .find_by_region_id(region.id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     let settings = region_settings
         .into_iter()
@@ -558,7 +524,7 @@ async fn build_region_response(
                 temperature_range: (setting.min_temperature, setting.max_temperature),
                 humidity_range: (f32::NAN, f32::NAN),
             };
-            
+
             SettingResponse {
                 id: setting.id,
                 target_id: setting.region_id,

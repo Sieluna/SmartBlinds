@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use async_trait::async_trait;
 use axum::extract::{
@@ -12,136 +12,230 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use futures::{SinkExt, StreamExt};
-use lumisync_api::Message;
+use lumisync_api::{Message, Protocol, SerializationProtocol};
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use uuid::Uuid;
 
 use super::MessageProtocol;
 
-/// WebSocket Protocol Adapter
 #[derive(Debug)]
 pub struct WebSocketProtocol {
     /// WebSocket server address
     addr: SocketAddr,
     /// Client connection management
-    clients: Arc<Mutex<HashMap<String, mpsc::Sender<WsMessage>>>>,
+    clients: Arc<RwLock<HashMap<String, mpsc::Sender<WsMessage>>>>,
     /// Application message broadcast channel
     app_tx: Arc<broadcast::Sender<Message>>,
     /// Stop server sender
     stop_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    /// Serialization protocol
+    protocol: SerializationProtocol,
 }
 
 impl WebSocketProtocol {
     pub fn new(addr: SocketAddr) -> Self {
-        let (app_tx, _) = broadcast::channel(100);
+        let (app_tx, _) = broadcast::channel(1000);
         Self {
             addr,
-            clients: Arc::new(Mutex::new(HashMap::new())),
+            clients: Arc::new(RwLock::new(HashMap::new())),
             app_tx: Arc::new(app_tx),
             stop_tx: Arc::new(Mutex::new(None)),
+            protocol: Default::default(),
         }
     }
 
-    /// Handle new WebSocket connection
+    pub fn with_protocol(mut self, protocol: SerializationProtocol) -> Self {
+        self.protocol = protocol;
+        self
+    }
+
+    pub fn protocol(&self) -> &SerializationProtocol {
+        &self.protocol
+    }
+
     async fn handle_socket(
         socket: WebSocket,
         client_id: String,
-        clients: Arc<Mutex<HashMap<String, mpsc::Sender<WsMessage>>>>,
+        clients: Arc<RwLock<HashMap<String, mpsc::Sender<WsMessage>>>>,
         app_tx: Arc<broadcast::Sender<Message>>,
+        protocol: SerializationProtocol,
     ) {
         let (mut sender, mut receiver) = socket.split();
 
-        // Create message channel for the client
-        let (client_tx, mut client_rx) = mpsc::channel::<WsMessage>(100);
+        tracing::info!("WebSocket client {} connected", client_id);
 
-        // Add client to connection pool
+        let (client_tx, mut client_rx) = mpsc::channel::<WsMessage>(1000);
+
         {
-            let mut clients_map = clients.lock().unwrap();
+            let mut clients_map = clients.write().unwrap();
             clients_map.insert(client_id.clone(), client_tx);
+            tracing::debug!("Active WebSocket connections: {}", clients_map.len());
         }
 
-        // Subscribe to application message broadcast channel
         let mut app_rx = app_tx.subscribe();
 
-        // Task to send messages to the client
+        let client_id_for_send = client_id.clone();
         let send_task = tokio::spawn(async move {
             while let Some(msg) = client_rx.recv().await {
-                if sender.send(msg).await.is_err() {
+                if let Err(e) = sender.send(msg).await {
+                    tracing::warn!(
+                        "Failed to send message to client {}: {}",
+                        client_id_for_send,
+                        e
+                    );
                     break;
                 }
             }
         });
 
-        // Task to handle broadcast messages
         let clients_for_broadcast = clients.clone();
         let client_id_for_broadcast = client_id.clone();
         let broadcast_task = tokio::spawn(async move {
             while let Ok(app_msg) = app_rx.recv().await {
-                // Serialize AppMessage to JSON
-                if let Ok(json) = serde_json::to_string(&app_msg) {
-                    // Get sender to avoid holding lock during await
-                    let tx = {
-                        let clients_guard = clients_for_broadcast.lock().unwrap();
-                        clients_guard.get(&client_id_for_broadcast).cloned()
-                    };
+                let json = match serde_json::to_string(&app_msg) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to serialize message for client {}: {:?}",
+                            client_id_for_broadcast,
+                            e
+                        );
+                        continue;
+                    }
+                };
 
-                    // If sender found, send message
-                    if let Some(tx) = tx {
-                        let _ = tx.send(WsMessage::Text(json)).await;
+                let tx = {
+                    let clients_guard = clients_for_broadcast.read().unwrap();
+                    clients_guard.get(&client_id_for_broadcast).cloned()
+                };
+
+                if let Some(tx) = tx {
+                    if let Err(e) = tx.send(WsMessage::Text(json)).await {
+                        tracing::warn!(
+                            "Failed to send broadcast message to client {}: {:?}",
+                            client_id_for_broadcast,
+                            e
+                        );
                     }
                 }
             }
         });
 
-        // Handle messages from client
-        while let Some(Ok(msg)) = receiver.next().await {
-            match msg {
-                WsMessage::Text(text) => {
-                    // Parse JSON message from client as Message
-                    if let Ok(app_msg) = serde_json::from_str::<Message>(&text) {
-                        // Broadcast to other clients
-                        let _ = app_tx.send(app_msg);
+        let protocol_for_receiver = protocol.clone();
+        while let Some(result) = receiver.next().await {
+            match result {
+                Ok(msg) => match msg {
+                    WsMessage::Text(text) => {
+                        let app_msg: Result<Message, _> = serde_json::from_str(&text);
+                        match app_msg {
+                            Ok(app_msg) => {
+                                if let Err(e) = app_tx.send(app_msg) {
+                                    tracing::warn!(
+                                        "Failed to broadcast text message from client {}: {:?}",
+                                        client_id,
+                                        e
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Received invalid JSON message from client {}: {}",
+                                    client_id,
+                                    e
+                                );
+                            }
+                        }
                     }
-                }
-                WsMessage::Binary(bin) => {
-                    // Parse binary message from client as Message
-                    if let Ok(app_msg) = bincode::deserialize::<Message>(&bin) {
-                        // Broadcast to other clients
-                        let _ = app_tx.send(app_msg);
+                    WsMessage::Binary(bin) => {
+                        let app_msg = protocol_for_receiver.deserialize::<Message>(&bin);
+                        match app_msg {
+                            Ok(app_msg) => {
+                                if let Err(e) = app_tx.send(app_msg) {
+                                    tracing::warn!(
+                                        "Failed to broadcast binary message from client {}: {:?}",
+                                        client_id,
+                                        e
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Received invalid binary message from client {}: {:?}",
+                                    client_id,
+                                    e
+                                );
+                            }
+                        }
                     }
+                    WsMessage::Close(reason) => {
+                        tracing::info!(
+                            "Client {} closed connection: {:?}",
+                            client_id,
+                            reason.map(|r| format!("{}: {}", r.code, r.reason))
+                        );
+                        break;
+                    }
+                    WsMessage::Ping(data) => {
+                        let tx = {
+                            let clients_map = clients.read().unwrap();
+                            clients_map.get(&client_id).cloned()
+                        };
+
+                        if let Some(tx) = tx {
+                            if let Err(e) = tx.send(WsMessage::Pong(data)).await {
+                                tracing::warn!(
+                                    "Failed to send pong to client {}: {}",
+                                    client_id,
+                                    e
+                                );
+                                break;
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                Err(e) => {
+                    tracing::warn!("WebSocket error for client {}: {}", client_id, e);
+                    break;
                 }
-                WsMessage::Close(_) => break,
-                _ => {}
             }
         }
 
-        // Client disconnected, clean up resources
         {
-            let mut clients_map = clients.lock().unwrap();
+            let mut clients_map = clients.write().unwrap();
             clients_map.remove(&client_id);
+            tracing::debug!("Remaining WebSocket connections: {}", clients_map.len());
         }
 
-        // Stop tasks
         send_task.abort();
         broadcast_task.abort();
+
+        tracing::info!("Client {} disconnected", client_id);
     }
 
-    /// WebSocket upgrade handler
     async fn ws_handler(
         ws: WebSocketUpgrade,
-        State((clients, app_tx)): State<(
-            Arc<Mutex<HashMap<String, mpsc::Sender<WsMessage>>>>,
+        State((clients, app_tx, protocol)): State<(
+            Arc<RwLock<HashMap<String, mpsc::Sender<WsMessage>>>>,
             Arc<broadcast::Sender<Message>>,
+            SerializationProtocol,
         )>,
     ) -> impl IntoResponse {
         let client_id = Uuid::new_v4().to_string();
         let clients_clone = clients.clone();
         let app_tx_clone = app_tx.clone();
         let client_id_clone = client_id.clone();
+        let protocol_clone = protocol.clone();
 
         ws.on_upgrade(move |socket| {
-            Self::handle_socket(socket, client_id_clone, clients_clone, app_tx_clone)
+            Self::handle_socket(
+                socket,
+                client_id_clone,
+                clients_clone,
+                app_tx_clone,
+                protocol_clone,
+            )
         })
     }
 }
@@ -155,25 +249,34 @@ impl MessageProtocol for WebSocketProtocol {
     async fn start(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         let app = Router::new()
             .route("/ws", get(Self::ws_handler))
-            .with_state((self.clients.clone(), self.app_tx.clone()));
+            .with_state((
+                self.clients.clone(),
+                self.app_tx.clone(),
+                self.protocol.clone(),
+            ));
 
-        let listener = TcpListener::bind(&self.addr).await?;
-        tracing::info!("WebSocket server listening on {}", self.addr);
+        let listener = TcpListener::bind(&self.addr).await.map_err(|e| {
+            tracing::error!("Failed to bind WebSocket server to {}: {}", self.addr, e);
+            Box::new(e) as Box<dyn Error + Send + Sync>
+        })?;
+        tracing::info!(
+            "WebSocket server listening on {} with {} protocol",
+            self.addr,
+            self.protocol.name()
+        );
 
-        // Create stop signal channel
         let (stop_tx, stop_rx) = oneshot::channel();
         {
             let mut stop_tx_guard = self.stop_tx.lock().unwrap();
             *stop_tx_guard = Some(stop_tx);
         }
 
-        // Start server
         let server = axum::serve(listener, app);
         let graceful = server.with_graceful_shutdown(async {
             stop_rx.await.ok();
+            tracing::info!("WebSocket server shutdown signal received");
         });
 
-        // Run server in new task
         tokio::spawn(async move {
             if let Err(e) = graceful.await {
                 tracing::error!("WebSocket server error: {}", e);
@@ -184,8 +287,9 @@ impl MessageProtocol for WebSocketProtocol {
     }
 
     async fn send_app_message(&self, message: Message) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Send message through broadcast channel
-        let _ = self.app_tx.send(message);
+        if let Err(e) = self.app_tx.send(message) {
+            tracing::warn!("Failed to broadcast application message: {:?}", e);
+        }
         Ok(())
     }
 
@@ -193,21 +297,24 @@ impl MessageProtocol for WebSocketProtocol {
         &self,
         _message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // WebSocket protocol doesn't directly handle device messages
-        // If needed, could convert to AppMessage and send
+        tracing::debug!("WebSocket protocol doesn't handle device messages directly");
         Ok(())
     }
 
     async fn stop(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Send stop signal
+        tracing::info!("Stopping WebSocket protocol server");
+
         let mut stop_tx_guard = self.stop_tx.lock().unwrap();
         if let Some(tx) = stop_tx_guard.take() {
-            let _ = tx.send(());
+            if let Err(e) = tx.send(()) {
+                tracing::warn!("Failed to send WebSocket server stop signal: {:?}", e);
+            }
         }
 
-        // Clean up client connections
-        let mut clients = self.clients.lock().unwrap();
+        let mut clients = self.clients.write().unwrap();
+        let count = clients.len();
         clients.clear();
+        tracing::info!("Closed {} WebSocket client connections", count);
 
         Ok(())
     }
