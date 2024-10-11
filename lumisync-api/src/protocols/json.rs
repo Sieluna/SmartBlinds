@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use super::{Error, Protocol, Result};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct JsonProtocol;
 
 impl Protocol for JsonProtocol {

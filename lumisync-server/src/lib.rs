@@ -1,5 +1,6 @@
 pub mod app;
 pub mod configs;
+pub mod errors;
 pub mod handles;
 pub mod middlewares;
 pub mod models;
