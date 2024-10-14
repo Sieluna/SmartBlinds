@@ -421,9 +421,7 @@ async fn test_update_device_status() {
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::from(
             serde_json::to_string(&json!({
-                "power": "on",
-                "opening": 80,
-                "mode": "auto"
+                "position": 80,
             }))
             .unwrap(),
         ))
@@ -456,8 +454,5 @@ async fn test_update_device_status() {
         .unwrap();
     let device_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    // Fix JSON path - status may be directly in the device response
-    assert_eq!(device_response["status"]["power"], json!("on"));
-    assert_eq!(device_response["status"]["opening"], json!(80));
-    assert_eq!(device_response["status"]["mode"], json!("auto"));
+    assert_eq!(device_response["status"]["position"], json!(80));
 }
