@@ -120,6 +120,15 @@ pub struct DeviceResponse {
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeviceSettingUnion {
+    /// Window device settings
+    Window(SettingResponse<WindowSettingData>),
+    /// Sensor device settings
+    Sensor(SettingResponse<SensorSettingData>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DeviceValue {
     /// Window position data
     Window {
@@ -137,7 +146,6 @@ pub enum DeviceValue {
     },
 }
 
-#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceStatus {
     /// Current device data
@@ -148,14 +156,4 @@ pub struct DeviceStatus {
     pub battery: u8,
     /// Last update time
     pub updated_at: OffsetDateTime,
-}
-
-#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum DeviceSettingUnion {
-    /// Window device settings
-    Window(SettingResponse<WindowSettingData>),
-    /// Sensor device settings
-    Sensor(SettingResponse<SensorSettingData>),
 }

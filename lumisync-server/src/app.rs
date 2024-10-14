@@ -22,46 +22,81 @@ fn openapi() -> Router {
     #[derive(OpenApi)]
     #[openapi(
         paths(
+            // auth
             register,
             login,
             refresh_token,
             get_current_user,
+            // group
             create_group,
             get_user_groups,
             get_group_by_id,
             update_group,
             delete_group,
+            // region
             create_region,
             get_regions_by_group_id,
             get_region_by_id,
             update_region,
             delete_region,
             update_region_environment,
+            create_region_setting,
+            get_region_settings,
+            get_region_setting_by_id,
+            update_region_setting,
+            delete_region_setting,
+            // device
             create_device,
             get_devices_by_region_id,
             get_device_by_id,
             update_device,
             delete_device,
             update_device_status,
+            create_device_setting,
+            get_device_settings,
+            get_device_setting_by_id,
+            update_device_setting,
+            delete_device_setting,
         ),
         components(
             schemas(
+                // auth
                 UserRole,
                 RegionRole,
                 LoginRequest,
                 RegisterRequest,
                 UserResponse,
+                TokenResponse,
+                // group
                 CreateGroupRequest,
                 GroupResponse,
+                // region
+                RegionRole,
                 CreateRegionRequest,
+                UpdateRegionRequest,
                 RegionInfoResponse,
                 RegionResponse,
+                // device
+                DeviceType,
                 CreateDeviceRequest,
                 UpdateDeviceRequest,
                 DeviceRecordResponse,
                 DeviceSettingResponse,
                 DeviceInfoResponse,
                 DeviceResponse,
+                // settings
+                WindowSettingData,
+                SensorSettingData,
+                RegionSettingData,
+                CreateSettingRequest<WindowSettingData>,
+                CreateSettingRequest<SensorSettingData>,
+                CreateSettingRequest<RegionSettingData>,
+                UpdateSettingRequest<WindowSettingData>,
+                UpdateSettingRequest<SensorSettingData>,
+                UpdateSettingRequest<RegionSettingData>,
+                SettingResponse<WindowSettingData>,
+                SettingResponse<SensorSettingData>,
+                SettingResponse<RegionSettingData>,
             )
         ),
         tags(
@@ -143,6 +178,7 @@ pub async fn create_app(settings: &Arc<Settings>) -> Router {
     let device_record_repository = Arc::new(DeviceRecordRepository::new(storage.clone()));
     let device_setting_repository = Arc::new(DeviceSettingRepository::new(storage.clone()));
     let region_setting_repository = Arc::new(RegionSettingRepository::new(storage.clone()));
+    let _ = Arc::new(EventRepository::new(storage.clone()));
 
     let auth_service = Arc::new(AuthService::new());
     let token_service = Arc::new(TokenService::new(settings.auth.clone()));

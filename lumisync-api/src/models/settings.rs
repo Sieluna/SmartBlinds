@@ -6,8 +6,6 @@ use time::OffsetDateTime;
 
 use super::Id;
 
-/// Generic setting interface
-#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Setting<T> {
     /// Setting ID
@@ -22,7 +20,6 @@ pub struct Setting<T> {
     pub end_time: OffsetDateTime,
 }
 
-/// Region environment setting data
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegionSettingData {
@@ -34,7 +31,6 @@ pub struct RegionSettingData {
     pub humidity_range: (f32, f32),
 }
 
-/// Window control setting data
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowSettingData {
@@ -44,7 +40,6 @@ pub struct WindowSettingData {
     pub auto_adjust: bool,
 }
 
-/// Sensor setting data
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SensorSettingData {
@@ -54,7 +49,6 @@ pub struct SensorSettingData {
     pub report_threshold: BTreeMap<String, f32>,
 }
 
-/// Setting creation request
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSettingRequest<T> {
@@ -68,7 +62,6 @@ pub struct CreateSettingRequest<T> {
     pub end_time: OffsetDateTime,
 }
 
-/// Setting update request
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSettingRequest<T> {
@@ -80,7 +73,6 @@ pub struct UpdateSettingRequest<T> {
     pub end_time: Option<OffsetDateTime>,
 }
 
-/// Generic setting response
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingResponse<T> {

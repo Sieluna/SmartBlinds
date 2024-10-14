@@ -3,12 +3,14 @@ pub mod auth;
 pub mod device;
 pub mod group;
 pub mod region;
+pub mod setting;
 
 pub use api::ApiError;
 pub use auth::AuthError;
 pub use device::DeviceError;
 pub use group::GroupError;
 pub use region::RegionError;
+pub use setting::SettingError;
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -24,6 +26,7 @@ impl IntoResponse for ApiError {
             ApiError::DeviceError(e) => (e.status_code(), e.to_string(), None),
             ApiError::GroupError(e) => (e.status_code(), e.to_string(), None),
             ApiError::RegionError(e) => (e.status_code(), e.to_string(), None),
+            ApiError::SettingError(e) => (e.status_code(), e.to_string(), None),
             ApiError::DatabaseError(e) => {
                 let error_id = Uuid::new_v4();
                 tracing::error!(error_id = ?error_id, "Database error: {}", e);

@@ -7,9 +7,9 @@ use axum::{middleware, Extension, Json, Router};
 use lumisync_api::models::*;
 use serde_json::{json, Value};
 
-use crate::errors::{ApiError, DeviceError, RegionError};
+use crate::errors::{ApiError, DeviceError, RegionError, SettingError};
 use crate::middlewares::{auth, TokenState};
-use crate::models::Device;
+use crate::models::{Device, DeviceSetting};
 use crate::repositories::{
     DeviceRecordRepository, DeviceRepository, DeviceSettingRepository, RegionRepository,
 };
@@ -37,6 +37,16 @@ pub fn device_router(device_state: DeviceState, token_state: TokenState) -> Rout
                 .delete(delete_device),
         )
         .route("/api/devices/:device_id/status", put(update_device_status))
+        .route(
+            "/api/devices/:device_id/settings",
+            get(get_device_settings).post(create_device_setting),
+        )
+        .route(
+            "/api/devices/settings/:setting_id",
+            get(get_device_setting_by_id)
+                .put(update_device_setting)
+                .delete(delete_device_setting),
+        )
         .route_layer(middleware::from_fn_with_state(token_state, auth))
         .with_state(device_state)
 }
@@ -314,7 +324,7 @@ pub async fn get_device_by_id(
         name: device.name,
         device_type: device.device_type.into(),
         location: device.location.clone(),
-        status: device.status.clone(),
+        status: device.status,
     };
 
     let device_response = DeviceResponse {
@@ -557,4 +567,440 @@ pub async fn update_device_status(
     };
 
     Ok(Json(command_response))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/devices/{device_id}/settings",
+    tag = "devices",
+    params(
+        ("device_id" = i32, Path, description = "Device ID")
+    ),
+    request_body = CreateSettingRequest<serde_json::Value>,
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 201, description = "Setting created successfully", body = SettingResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to modify this device"),
+        (status = 404, description = "Device not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn create_device_setting(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<DeviceState>,
+    Path(device_id): Path<i32>,
+    Json(body): Json<CreateSettingRequest<serde_json::Value>>,
+) -> Result<Json<SettingResponse<serde_json::Value>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Check if device exists
+    let device = state
+        .device_repository
+        .find_by_id(device_id)
+        .await?
+        .ok_or(DeviceError::DeviceNotFound)?;
+
+    // Check if user has permission to modify the device
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Device,
+            device_id,
+            Permission::DEVICE_UPDATE_SETTINGS,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(DeviceError::InsufficientPermission.into());
+    }
+
+    // Validate request parameters
+    if body.start_time >= body.end_time {
+        return Err(SettingError::InvalidTimeRange.into());
+    }
+
+    // Validate device setting format
+    if device.device_type == DeviceType::Window.to_string() {
+        // Check window device settings
+        let window_data: Result<WindowSettingData, _> = serde_json::from_value(body.data.clone());
+        if window_data.is_err() {
+            return Err(SettingError::InvalidDeviceSettingFormat.into());
+        }
+        let _ = window_data.unwrap();
+    } else if device.device_type == DeviceType::Sensor.to_string() {
+        // Check sensor device settings
+        let sensor_data: Result<SensorSettingData, _> = serde_json::from_value(body.data.clone());
+        if sensor_data.is_err() {
+            return Err(SettingError::InvalidDeviceSettingFormat.into());
+        }
+        let _ = sensor_data.unwrap();
+    } else {
+        return Err(DeviceError::InvalidDeviceStatus.into());
+    }
+
+    // Create device setting
+    let setting = DeviceSetting {
+        id: 0,
+        device_id,
+        setting: body.data.clone(),
+        start: body.start_time,
+        end: body.end_time,
+    };
+
+    let mut tx = state.device_setting_repository.get_pool().begin().await?;
+    let setting_id = state
+        .device_setting_repository
+        .create(&setting, &mut tx)
+        .await?;
+    tx.commit().await?;
+
+    // Query created setting
+    let created_setting = state
+        .device_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Convert to API response format
+    let setting_response = SettingResponse {
+        id: created_setting.id,
+        target_id: created_setting.device_id,
+        data: created_setting.setting,
+        start_time: created_setting.start,
+        end_time: created_setting.end,
+    };
+
+    Ok(Json(setting_response))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/devices/{device_id}/settings",
+    tag = "devices",
+    params(
+        ("device_id" = i32, Path, description = "Device ID")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved settings", body = inline(Vec<SettingResponse<serde_json::Value>>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to access this device"),
+        (status = 404, description = "Device not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn get_device_settings(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<DeviceState>,
+    Path(device_id): Path<i32>,
+) -> Result<Json<Vec<SettingResponse<serde_json::Value>>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Check if device exists
+    let _device = state
+        .device_repository
+        .find_by_id(device_id)
+        .await?
+        .ok_or(DeviceError::DeviceNotFound)?;
+
+    // Check if user has permission to view the device
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Device,
+            device_id,
+            Permission::VIEW,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(DeviceError::InsufficientPermission.into());
+    }
+
+    // Get device settings
+    let device_settings = state
+        .device_setting_repository
+        .find_by_device_id(device_id)
+        .await?;
+
+    // Convert to API response format
+    let mut settings = Vec::new();
+
+    for device_setting in device_settings {
+        let setting_response = SettingResponse {
+            id: device_setting.id,
+            target_id: device_setting.device_id,
+            data: device_setting.setting,
+            start_time: device_setting.start,
+            end_time: device_setting.end,
+        };
+        settings.push(setting_response);
+    }
+
+    Ok(Json(settings))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/devices/settings/{setting_id}",
+    tag = "devices",
+    params(
+        ("setting_id" = i32, Path, description = "Setting ID")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved setting", body = SettingResponse<serde_json::Value>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to access this setting"),
+        (status = 404, description = "Setting not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn get_device_setting_by_id(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<DeviceState>,
+    Path(setting_id): Path<i32>,
+) -> Result<Json<SettingResponse<serde_json::Value>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Get setting information
+    let setting = state
+        .device_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Get device information
+    let device = state
+        .device_repository
+        .find_by_id(setting.device_id)
+        .await?
+        .ok_or(DeviceError::DeviceNotFound)?;
+
+    // Check if user has permission to view the device setting
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Device,
+            device.id,
+            Permission::VIEW,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(DeviceError::InsufficientPermission.into());
+    }
+
+    // Convert to API response format
+    let setting_response = SettingResponse {
+        id: setting.id,
+        target_id: setting.device_id,
+        data: setting.setting,
+        start_time: setting.start,
+        end_time: setting.end,
+    };
+
+    Ok(Json(setting_response))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/devices/settings/{setting_id}",
+    tag = "devices",
+    params(
+        ("setting_id" = i32, Path, description = "Setting ID")
+    ),
+    request_body = UpdateSettingRequest<serde_json::Value>,
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Setting updated successfully", body = SettingResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to modify this setting"),
+        (status = 404, description = "Setting not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn update_device_setting(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<DeviceState>,
+    Path(setting_id): Path<i32>,
+    Json(body): Json<UpdateSettingRequest<serde_json::Value>>,
+) -> Result<Json<SettingResponse<serde_json::Value>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Get setting information
+    let mut setting = state
+        .device_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Get device information
+    let device = state
+        .device_repository
+        .find_by_id(setting.device_id)
+        .await?
+        .ok_or(DeviceError::DeviceNotFound)?;
+
+    // Check if user has permission to modify the device setting
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Device,
+            device.id,
+            Permission::DEVICE_UPDATE_SETTINGS,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(DeviceError::InsufficientPermission.into());
+    }
+
+    // Update setting data
+    if let Some(data) = &body.data {
+        // Validate device setting format
+        if device.device_type == DeviceType::Window.to_string() {
+            // Check window device settings
+            let window_data: Result<WindowSettingData, _> = serde_json::from_value(data.clone());
+            if window_data.is_err() {
+                return Err(SettingError::InvalidDeviceSettingFormat.into());
+            }
+            let _ = window_data.unwrap();
+        } else if device.device_type == DeviceType::Sensor.to_string() {
+            // Check sensor device settings
+            let sensor_data: Result<SensorSettingData, _> = serde_json::from_value(data.clone());
+            if sensor_data.is_err() {
+                return Err(SettingError::InvalidDeviceSettingFormat.into());
+            }
+            let _ = sensor_data.unwrap();
+        } else {
+            return Err(DeviceError::InvalidDeviceStatus.into());
+        }
+
+        setting.setting = data.clone();
+    }
+
+    // Update time range
+    if let Some(start_time) = body.start_time {
+        setting.start = start_time;
+    }
+
+    if let Some(end_time) = body.end_time {
+        setting.end = end_time;
+    }
+
+    if setting.start >= setting.end {
+        return Err(SettingError::InvalidTimeRange.into());
+    }
+
+    // Update setting
+    let mut tx = state.device_setting_repository.get_pool().begin().await?;
+    state
+        .device_setting_repository
+        .update(setting_id, &setting, &mut tx)
+        .await?;
+    tx.commit().await?;
+
+    // Query updated setting
+    let updated_setting = state
+        .device_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Convert to API response format
+    let setting_response = SettingResponse {
+        id: updated_setting.id,
+        target_id: updated_setting.device_id,
+        data: updated_setting.setting,
+        start_time: updated_setting.start,
+        end_time: updated_setting.end,
+    };
+
+    Ok(Json(setting_response))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/devices/settings/{setting_id}",
+    tag = "devices",
+    params(
+        ("setting_id" = i32, Path, description = "Setting ID")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 204, description = "Setting deleted successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to delete this setting"),
+        (status = 404, description = "Setting not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn delete_device_setting(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<DeviceState>,
+    Path(setting_id): Path<i32>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Get setting information
+    let setting = state
+        .device_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Get device information
+    let device = state
+        .device_repository
+        .find_by_id(setting.device_id)
+        .await?
+        .ok_or(DeviceError::DeviceNotFound)?;
+
+    // Check if user has permission to delete the device setting
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Device,
+            device.id,
+            Permission::DEVICE_UPDATE_SETTINGS,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(DeviceError::InsufficientPermission.into());
+    }
+
+    // Delete setting
+    let mut tx = state.device_setting_repository.get_pool().begin().await?;
+    state
+        .device_setting_repository
+        .delete(setting_id, &mut tx)
+        .await?;
+    tx.commit().await?;
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }

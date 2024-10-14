@@ -6,9 +6,9 @@ use axum::routing::{get, put};
 use axum::{middleware, Extension, Json, Router};
 use lumisync_api::models::*;
 
-use crate::errors::{ApiError, GroupError, RegionError};
+use crate::errors::{ApiError, GroupError, RegionError, SettingError};
 use crate::middlewares::{auth, TokenState};
-use crate::models::Region;
+use crate::models::{Region, RegionSetting};
 use crate::repositories::*;
 use crate::services::{Permission, PermissionService, ResourceType, TokenClaims};
 
@@ -37,6 +37,16 @@ pub fn region_router(region_state: RegionState, token_state: TokenState) -> Rout
         .route(
             "/api/regions/:region_id/environment",
             put(update_region_environment),
+        )
+        .route(
+            "/api/regions/:region_id/settings",
+            get(get_region_settings).post(create_region_setting),
+        )
+        .route(
+            "/api/regions/settings/:setting_id",
+            get(get_region_setting_by_id)
+                .put(update_region_setting)
+                .delete(delete_region_setting),
         )
         .route_layer(middleware::from_fn_with_state(token_state, auth))
         .with_state(region_state)
@@ -551,4 +561,426 @@ async fn build_region_response(
     };
 
     Ok(region_response)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/regions/{region_id}/settings",
+    tag = "regions",
+    params(
+        ("region_id" = i32, Path, description = "Region ID")
+    ),
+    request_body = CreateSettingRequest<RegionSettingData>,
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 201, description = "Setting created successfully", body = SettingResponse<RegionSettingData>),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to modify this region"),
+        (status = 404, description = "Region not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn create_region_setting(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<RegionState>,
+    Path(region_id): Path<i32>,
+    Json(body): Json<CreateSettingRequest<RegionSettingData>>,
+) -> Result<Json<SettingResponse<RegionSettingData>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Check if region exists
+    let _ = state
+        .region_repository
+        .find_by_id(region_id)
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
+
+    // Check if user has permission to modify region settings
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Region,
+            region_id,
+            Permission::UPDATE,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(RegionError::InsufficientPermission.into());
+    }
+
+    // Validate request parameters
+    if body.start_time >= body.end_time {
+        return Err(SettingError::InvalidTimeRange.into());
+    }
+
+    let (min_light, max_light) = body.data.light_range;
+    if min_light < 0 || max_light < min_light {
+        return Err(SettingError::InvalidLightRange.into());
+    }
+
+    let (min_temp, max_temp) = body.data.temperature_range;
+    if min_temp < -50.0 || max_temp > 100.0 || max_temp < min_temp {
+        return Err(SettingError::InvalidTemperatureRange.into());
+    }
+
+    // Create region setting
+    let setting = RegionSetting {
+        id: 0,
+        region_id,
+        min_light,
+        max_light,
+        min_temperature: min_temp,
+        max_temperature: max_temp,
+        start: body.start_time,
+        end: body.end_time,
+    };
+
+    let mut tx = state.region_setting_repository.get_pool().begin().await?;
+    let setting_id = state
+        .region_setting_repository
+        .create(&setting, &mut tx)
+        .await?;
+    tx.commit().await?;
+
+    // Query created setting
+    let created_setting = state
+        .region_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Convert to API response format
+    let setting_response = SettingResponse {
+        id: created_setting.id,
+        target_id: created_setting.region_id,
+        data: RegionSettingData {
+            light_range: (created_setting.min_light, created_setting.max_light),
+            temperature_range: (
+                created_setting.min_temperature,
+                created_setting.max_temperature,
+            ),
+            humidity_range: (f32::NAN, f32::NAN), // Humidity settings not supported yet
+        },
+        start_time: created_setting.start,
+        end_time: created_setting.end,
+    };
+
+    Ok(Json(setting_response))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/regions/{region_id}/settings",
+    tag = "regions",
+    params(
+        ("region_id" = i32, Path, description = "Region ID")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved settings", body = inline(Vec<SettingResponse<RegionSettingData>>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to access this region"),
+        (status = 404, description = "Region not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn get_region_settings(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<RegionState>,
+    Path(region_id): Path<i32>,
+) -> Result<Json<Vec<SettingResponse<RegionSettingData>>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Check if region exists
+    let _ = state
+        .region_repository
+        .find_by_id(region_id)
+        .await?
+        .ok_or(RegionError::RegionNotFound)?;
+
+    // Check if user has permission to view the region
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Region,
+            region_id,
+            Permission::VIEW,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(RegionError::InsufficientPermission.into());
+    }
+
+    // Get all region settings
+    let region_settings = state
+        .region_setting_repository
+        .find_by_region_id(region_id)
+        .await?;
+
+    // Convert to API response format
+    let setting_responses = region_settings
+        .into_iter()
+        .map(|setting| SettingResponse {
+            id: setting.id,
+            target_id: setting.region_id,
+            data: RegionSettingData {
+                light_range: (setting.min_light, setting.max_light),
+                temperature_range: (setting.min_temperature, setting.max_temperature),
+                humidity_range: (f32::NAN, f32::NAN), // Humidity settings not supported yet
+            },
+            start_time: setting.start,
+            end_time: setting.end,
+        })
+        .collect();
+
+    Ok(Json(setting_responses))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/regions/settings/{setting_id}",
+    tag = "regions",
+    params(
+        ("setting_id" = i32, Path, description = "Setting ID")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved setting", body = inline(SettingResponse<RegionSettingData>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to access this setting"),
+        (status = 404, description = "Setting not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn get_region_setting_by_id(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<RegionState>,
+    Path(setting_id): Path<i32>,
+) -> Result<Json<SettingResponse<RegionSettingData>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Get setting information
+    let setting = state
+        .region_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Check if user has permission to view the region
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Region,
+            setting.region_id,
+            Permission::VIEW,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(RegionError::InsufficientPermission.into());
+    }
+
+    // Convert to API response format
+    let setting_response = SettingResponse {
+        id: setting.id,
+        target_id: setting.region_id,
+        data: RegionSettingData {
+            light_range: (setting.min_light, setting.max_light),
+            temperature_range: (setting.min_temperature, setting.max_temperature),
+            humidity_range: (f32::NAN, f32::NAN), // Humidity settings not supported yet
+        },
+        start_time: setting.start,
+        end_time: setting.end,
+    };
+
+    Ok(Json(setting_response))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/regions/settings/{setting_id}",
+    tag = "regions",
+    params(
+        ("setting_id" = i32, Path, description = "Setting ID")
+    ),
+    request_body = UpdateSettingRequest<RegionSettingData>,
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Setting updated successfully", body = SettingResponse<RegionSettingData>),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to modify this setting"),
+        (status = 404, description = "Setting not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn update_region_setting(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<RegionState>,
+    Path(setting_id): Path<i32>,
+    Json(body): Json<UpdateSettingRequest<RegionSettingData>>,
+) -> Result<Json<SettingResponse<RegionSettingData>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Get setting information
+    let mut setting = state
+        .region_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Check if user has permission to modify region settings
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Region,
+            setting.region_id,
+            Permission::UPDATE,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(RegionError::InsufficientPermission.into());
+    }
+
+    // Update setting values
+    if let Some(data) = &body.data {
+        let (min_light, max_light) = data.light_range;
+        if min_light < 0 || max_light < min_light {
+            return Err(SettingError::InvalidLightRange.into());
+        }
+        setting.min_light = min_light;
+        setting.max_light = max_light;
+
+        let (min_temp, max_temp) = data.temperature_range;
+        if min_temp < -50.0 || max_temp > 100.0 || max_temp < min_temp {
+            return Err(SettingError::InvalidTemperatureRange.into());
+        }
+        setting.min_temperature = min_temp;
+        setting.max_temperature = max_temp;
+    }
+
+    // Update time range
+    if let Some(start_time) = body.start_time {
+        setting.start = start_time;
+    }
+
+    if let Some(end_time) = body.end_time {
+        setting.end = end_time;
+    }
+
+    if setting.start >= setting.end {
+        return Err(SettingError::InvalidTimeRange.into());
+    }
+
+    // Update setting
+    let mut tx = state.region_setting_repository.get_pool().begin().await?;
+    state
+        .region_setting_repository
+        .update(setting_id, &setting, &mut tx)
+        .await?;
+    tx.commit().await?;
+
+    // Query updated setting
+    let updated_setting = state
+        .region_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Convert to API response format
+    let setting_response = SettingResponse {
+        id: updated_setting.id,
+        target_id: updated_setting.region_id,
+        data: RegionSettingData {
+            light_range: (updated_setting.min_light, updated_setting.max_light),
+            temperature_range: (
+                updated_setting.min_temperature,
+                updated_setting.max_temperature,
+            ),
+            humidity_range: (f32::NAN, f32::NAN), // Humidity settings not supported yet
+        },
+        start_time: updated_setting.start,
+        end_time: updated_setting.end,
+    };
+
+    Ok(Json(setting_response))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/regions/settings/{setting_id}",
+    tag = "regions",
+    params(
+        ("setting_id" = i32, Path, description = "Setting ID")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 204, description = "Setting deleted successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to delete this setting"),
+        (status = 404, description = "Setting not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn delete_region_setting(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<RegionState>,
+    Path(setting_id): Path<i32>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Get setting information
+    let setting = state
+        .region_setting_repository
+        .find_by_id(setting_id)
+        .await?
+        .ok_or(SettingError::SettingNotFound)?;
+
+    // Check if user has permission to delete region settings
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Region,
+            setting.region_id,
+            Permission::UPDATE,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(RegionError::InsufficientPermission.into());
+    }
+
+    // Delete setting
+    let mut tx = state.region_setting_repository.get_pool().begin().await?;
+    state
+        .region_setting_repository
+        .delete(setting_id, &mut tx)
+        .await?;
+    tx.commit().await?;
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }

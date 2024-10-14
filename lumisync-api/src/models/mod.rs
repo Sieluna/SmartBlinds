@@ -14,6 +14,8 @@ pub use message::*;
 pub use region::*;
 pub use settings::*;
 
+use alloc::vec::Vec;
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -37,4 +39,17 @@ pub struct SensorData {
 pub struct WindowData {
     /// Window position percentage (0-100)
     pub target_position: u8,
+}
+
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Page<T> {
+    /// Total number of items
+    pub total: usize,
+    /// Current page number
+    pub page: usize,
+    /// Total number of pages
+    pub pages: usize,
+    /// Items in the current page
+    pub items: Vec<T>,
 }

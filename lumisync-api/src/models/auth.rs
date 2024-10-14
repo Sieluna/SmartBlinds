@@ -78,10 +78,3 @@ pub struct TokenResponse {
     /// Expiration time (seconds)
     pub expires_in: u64,
 }
-
-#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RefreshTokenRequest {
-    /// Refresh token
-    pub refresh_token: String,
-}

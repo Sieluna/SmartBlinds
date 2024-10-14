@@ -1,4 +1,4 @@
-use super::{AuthError, DeviceError, GroupError, RegionError};
+use super::{AuthError, DeviceError, GroupError, RegionError, SettingError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -13,6 +13,9 @@ pub enum ApiError {
 
     #[error("Region error: {0}")]
     RegionError(#[from] RegionError),
+
+    #[error("Setting error: {0}")]
+    SettingError(#[from] SettingError),
 
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
