@@ -2,6 +2,7 @@
 members = [
     "lumisync-analyser",
     "lumisync-api",
+    "lumisync-client",
     "lumisync-embedded",
     "lumisync-server",
     "lumisync-mock"

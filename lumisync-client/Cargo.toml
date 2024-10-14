@@ -1,0 +1,34 @@
+[package]
+name = "lumisync_client"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embassy-net = { version = "0.4", features = ["proto-ipv4", "tcp"], optional = true }
+embassy-time = { version = "0.3", optional = true }
+lumisync_api = { workspace = true }
+log = "0.4"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["alloc"] }
+time = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", features = ["Storage", "Window"], optional = true }
+
+[features]
+default = ["std"]
+std = []
+embassy = [
+    "dep:embassy-net", 
+    "dep:embassy-time"
+]
+wasm = [
+    "dep:js-sys",
+    "dep:wasm-bindgen",
+    "dep:wasm-bindgen-futures",
+    "dep:web-sys"
+]
