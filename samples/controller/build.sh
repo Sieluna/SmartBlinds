@@ -81,7 +81,7 @@ flash_device() {
 
     case "$MODEL" in
         esp*)
-            flash_cmd="$FLASH_TOOL --chip $MODEL target/$EMBEDDED_TARGET/$BUILD_MODE/sensor"
+            flash_cmd="$FLASH_TOOL --chip $MODEL target/$EMBEDDED_TARGET/$BUILD_MODE/controller"
             ;;
         *)
             echo "Error: Unsupported model '$MODEL' for flashing." >&2

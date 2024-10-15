@@ -8,6 +8,7 @@ pub enum Error {
     NetworkError,
     SerializationError,
     TimeoutError,
+    NotConnected,
 }
 
 impl fmt::Display for Error {
@@ -19,6 +20,21 @@ impl fmt::Display for Error {
             Error::NetworkError => write!(f, "Network error"),
             Error::SerializationError => write!(f, "Serialization error"),
             Error::TimeoutError => write!(f, "Timeout error"),
+            Error::NotConnected => write!(f, "Not connected"),
+        }
+    }
+}
+
+impl embedded_hal_nb::serial::Error for Error {
+    fn kind(&self) -> embedded_hal_nb::serial::ErrorKind {
+        match self {
+            Error::DeviceNotFound => embedded_hal_nb::serial::ErrorKind::Other,
+            Error::InvalidCommand => embedded_hal_nb::serial::ErrorKind::Other,
+            Error::InvalidState => embedded_hal_nb::serial::ErrorKind::Other,
+            Error::NetworkError => embedded_hal_nb::serial::ErrorKind::Other,
+            Error::SerializationError => embedded_hal_nb::serial::ErrorKind::Other,
+            Error::TimeoutError => embedded_hal_nb::serial::ErrorKind::Other,
+            Error::NotConnected => embedded_hal_nb::serial::ErrorKind::Other,
         }
     }
 }

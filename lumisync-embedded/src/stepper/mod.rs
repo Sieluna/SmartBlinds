@@ -129,28 +129,44 @@ where
             return self.step_interval;
         }
 
-        if distance_to > 0 {
-            // We are anticlockwise from the target
-            if self.step_count > 0 {
-                if steps_to_stop >= distance_to || self.direction == Direction::CounterClockwise {
-                    self.step_count = -steps_to_stop; // Start deceleration
-                }
-            } else if self.step_count < 0 {
-                if steps_to_stop < distance_to && self.direction == Direction::Clockwise {
-                    self.step_count = -self.step_count; // Start acceleration
-                }
-            }
-        } else if distance_to < 0 {
-            // We are clockwise from the target
-            if self.step_count > 0 {
-                if steps_to_stop >= -distance_to || self.direction == Direction::Clockwise {
-                    self.step_count = -steps_to_stop; // Start deceleration
-                }
-            } else if self.step_count < 0 {
-                if steps_to_stop < -distance_to && self.direction == Direction::CounterClockwise {
-                    self.step_count = -self.step_count; // Start acceleration
+        match distance_to.cmp(&0) {
+            core::cmp::Ordering::Greater => {
+                // We are anticlockwise from the target
+                match self.step_count.cmp(&0) {
+                    core::cmp::Ordering::Greater => {
+                        if steps_to_stop >= distance_to
+                            || self.direction == Direction::CounterClockwise
+                        {
+                            self.step_count = -steps_to_stop; // Start deceleration
+                        }
+                    }
+                    core::cmp::Ordering::Less => {
+                        if steps_to_stop < distance_to && self.direction == Direction::Clockwise {
+                            self.step_count = -self.step_count; // Start acceleration
+                        }
+                    }
+                    core::cmp::Ordering::Equal => {}
                 }
             }
+            core::cmp::Ordering::Less => {
+                // We are clockwise from the target
+                match self.step_count.cmp(&0) {
+                    core::cmp::Ordering::Greater => {
+                        if steps_to_stop >= -distance_to || self.direction == Direction::Clockwise {
+                            self.step_count = -steps_to_stop; // Start deceleration
+                        }
+                    }
+                    core::cmp::Ordering::Less => {
+                        if steps_to_stop < -distance_to
+                            && self.direction == Direction::CounterClockwise
+                        {
+                            self.step_count = -self.step_count; // Start acceleration
+                        }
+                    }
+                    core::cmp::Ordering::Equal => {}
+                }
+            }
+            core::cmp::Ordering::Equal => {}
         }
 
         if self.step_count == 0 {
