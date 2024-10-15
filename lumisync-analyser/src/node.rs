@@ -1,7 +1,7 @@
 use std::io::{self, Error, ErrorKind, Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom;
 use rand::Rng;
 
 use crate::criterion::{Criterion, CriterionType};

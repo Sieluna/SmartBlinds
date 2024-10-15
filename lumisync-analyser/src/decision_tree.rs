@@ -83,7 +83,7 @@ mod tests {
 
         let table = table_builder.build()?;
 
-        let regressor = DecisionTree::fit(&mut rand::thread_rng(), Mse, table, Default::default());
+        let regressor = DecisionTree::fit(&mut rand::rng(), Mse, table, Default::default());
         assert_eq!(
             regressor.predict(
                 &[

@@ -28,9 +28,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(model_path)?;
 
-    file.write(&mut bytes).unwrap();
+    file.write_all(&bytes).unwrap();
 
     Ok(())
 }

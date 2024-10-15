@@ -50,7 +50,7 @@ impl Table<'_> {
         rng: &mut R,
         test_rate: f64,
     ) -> (Self, Self) {
-        (&mut self.row_index[self.row_range.start..self.row_range.end]).shuffle(rng);
+        self.row_index[self.row_range.start..self.row_range.end].shuffle(rng);
         let test_num = (self.rows_len() as f64 * test_rate).round() as usize;
 
         let mut train = self.clone();
@@ -61,11 +61,11 @@ impl Table<'_> {
         (train, test)
     }
 
-    pub fn target<'b>(&'b self) -> impl 'b + Iterator<Item = f64> + Clone {
+    pub fn target(&self) -> impl '_ + Iterator<Item = f64> + Clone {
         self.column(self.columns.len() - 1)
     }
 
-    pub fn column<'b>(&'b self, column_index: usize) -> impl 'b + Iterator<Item = f64> + Clone {
+    pub fn column(&self, column_index: usize) -> impl '_ + Iterator<Item = f64> + Clone {
         self.row_indices()
             .map(move |i| self.columns[column_index][i])
     }
@@ -78,7 +78,7 @@ impl Table<'_> {
         self.row_range.end - self.row_range.start
     }
 
-    fn row_indices<'b>(&'b self) -> impl 'b + Iterator<Item = usize> + Clone {
+    fn row_indices(&self) -> impl '_ + Iterator<Item = usize> + Clone {
         self.row_index[self.row_range.start..self.row_range.end]
             .iter()
             .copied()
@@ -86,14 +86,14 @@ impl Table<'_> {
 
     pub fn sort_rows_by_column(&mut self, column: usize) {
         let columns = &self.columns;
-        (&mut self.row_index[self.row_range.start..self.row_range.end])
+        self.row_index[self.row_range.start..self.row_range.end]
             .sort_by_key(|&x| OrderedFloat(columns[column][x]))
     }
 
     pub fn bootstrap_sample<R: Rng + ?Sized>(&self, rng: &mut R, max_samples: usize) -> Self {
         let samples = std::cmp::min(max_samples, self.rows_len());
         let row_index = (0..samples)
-            .map(|_| self.row_index[rng.gen_range(self.row_range.start..self.row_range.end)])
+            .map(|_| self.row_index[rng.random_range(self.row_range.start..self.row_range.end)])
             .collect::<Vec<_>>();
         let row_range = Range {
             start: 0,
@@ -107,10 +107,10 @@ impl Table<'_> {
         }
     }
 
-    pub fn split_points<'b>(
-        &'b self,
+    pub fn split_points(
+        &self,
         column_index: usize,
-    ) -> impl 'b + Iterator<Item = (Range<usize>, f64)> {
+    ) -> impl '_ + Iterator<Item = (Range<usize>, f64)> {
         // Assumption: `self.columns[column]` has been sorted.
         let column = &self.columns[column_index];
         self.row_indices()
@@ -120,7 +120,7 @@ impl Table<'_> {
                 if prev.is_none() {
                     *prev = Some((x, i));
                     Some(None)
-                } else if prev.map_or(false, |(y, _)| (y - x).abs() > f64::EPSILON) {
+                } else if prev.is_some_and(|(y, _)| (y - x).abs() > f64::EPSILON) {
                     let (y, _) = prev.unwrap();
                     *prev = Some((x, i));
 
@@ -130,7 +130,7 @@ impl Table<'_> {
                     Some(None)
                 }
             })
-            .filter_map(|t| t)
+            .flatten()
     }
 
     pub fn with_split<F, T>(&mut self, row: usize, mut f: F) -> (T, T)
@@ -152,7 +152,7 @@ impl Table<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TableBuilder {
     pub columns: Vec<Vec<f64>>,
 }
@@ -236,67 +236,67 @@ impl TableBuilder {
     }
 }
 
-#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TableError {
-    #[error("Table must have at least one column and one row")]
     EmptyTable,
-
-    #[error("Some of rows have a different column count from others")]
     ColumnSizeMismatch,
-
-    #[error("Target column contains non finite numbers")]
     NonFiniteTarget,
-
-    #[error("Internal csv related error: {0}")]
     CSVError(String),
 }
 
+impl std::fmt::Display for TableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TableError::EmptyTable => write!(f, "Table must have at least one column and one row"),
+            TableError::ColumnSizeMismatch => {
+                write!(f, "Some of rows have a different column count from others")
+            }
+            TableError::NonFiniteTarget => write!(f, "Target column contains non finite numbers"),
+            TableError::CSVError(err) => write!(f, "Internal csv related error: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for TableError {}
+
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
     use super::*;
 
     #[test]
-    fn test_add_csv() -> Result<(), Box<dyn Error>> {
+    fn test_add_csv() {
         let mut table_builder = TableBuilder::new();
         let path = Path::new("datasets/tests/iris.csv");
         table_builder.add_csv(path).unwrap();
-        let table = table_builder.build()?;
+        let table = table_builder.build().unwrap();
         assert_eq!(table.rows_len(), 150);
-
-        Ok(())
     }
 
     #[test]
-    fn test_train_test_split() -> Result<(), Box<dyn Error>> {
+    fn test_train_test_split() {
         let mut table_builder = TableBuilder::new();
         for _ in 0..100 {
-            table_builder.add_row(&[0.0], 1.0)?;
+            table_builder.add_row(&[0.0], 1.0).unwrap();
         }
-        let table = table_builder.build()?;
+        let table = table_builder.build().unwrap();
         assert_eq!(table.rows_len(), 100);
 
-        let (train, test) = table.train_test_split(&mut rand::thread_rng(), 0.25);
+        let (train, test) = table.train_test_split(&mut rand::rng(), 0.25);
         assert_eq!(train.rows_len(), 75);
         assert_eq!(test.rows_len(), 25);
-
-        Ok(())
     }
 
     #[test]
-    fn test_filter() -> Result<(), Box<dyn Error>> {
+    fn test_filter() {
         let mut table_builder = TableBuilder::new();
         for i in 0..100 {
-            table_builder.add_row(&[0.0], i as f64)?;
+            table_builder.add_row(&[0.0], i as f64).unwrap();
         }
-        let mut table = table_builder.build()?;
+        let mut table = table_builder.build().unwrap();
         assert_eq!(table.rows_len(), 100);
 
         let removed = table.filter(|row| row[row.len() - 1] < 10.0);
         assert_eq!(removed, 90);
         assert_eq!(table.rows_len(), 10);
-
-        Ok(())
     }
 }

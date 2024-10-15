@@ -5,7 +5,6 @@ use ordered_float::OrderedFloat;
 pub mod criterion;
 pub mod decision_tree;
 pub mod node;
-pub mod pid_controller;
 pub mod random_forest;
 pub mod table;
 
