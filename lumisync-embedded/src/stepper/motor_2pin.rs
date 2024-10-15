@@ -164,7 +164,7 @@ mod tests {
         let step_states = motor.step_pin.get_states();
         assert_eq!(
             step_states,
-            vec![false, true],
+            alloc::vec![false, true],
             "Step pulse sequence should be low-high"
         );
     }
@@ -183,7 +183,7 @@ mod tests {
 
         assert_eq!(
             step_states,
-            vec![true, false],
+            alloc::vec![true, false],
             "Inverted step pulse sequence should be high-low"
         );
         assert_eq!(

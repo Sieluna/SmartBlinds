@@ -62,7 +62,7 @@ async fn test_get_regions_by_group_id() {
     let app = MockApp::new().await.with_region_handle();
     let group = create_test_group(app.storage.clone(), "Get Regions List Group").await;
     create_test_user_group(app.storage.clone(), app.admin.id, group.id, true).await;
-    let region = create_test_region(
+    create_test_region(
         app.storage.clone(),
         group.id,
         "Test Region List",
