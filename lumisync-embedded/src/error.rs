@@ -9,6 +9,7 @@ pub enum Error {
     SerializationError,
     TimeoutError,
     NotConnected,
+    SensorReadingOutOfRange,
 }
 
 impl fmt::Display for Error {
@@ -21,6 +22,7 @@ impl fmt::Display for Error {
             Error::SerializationError => write!(f, "Serialization error"),
             Error::TimeoutError => write!(f, "Timeout error"),
             Error::NotConnected => write!(f, "Not connected"),
+            Error::SensorReadingOutOfRange => write!(f, "Sensor reading out of valid range"),
         }
     }
 }
@@ -35,6 +37,7 @@ impl embedded_hal_nb::serial::Error for Error {
             Error::SerializationError => embedded_hal_nb::serial::ErrorKind::Other,
             Error::TimeoutError => embedded_hal_nb::serial::ErrorKind::Other,
             Error::NotConnected => embedded_hal_nb::serial::ErrorKind::Other,
+            Error::SensorReadingOutOfRange => embedded_hal_nb::serial::ErrorKind::Other,
         }
     }
 }

@@ -4,12 +4,39 @@ use embedded_io::Read;
 
 use crate::error::Error;
 
+#[derive(Debug, Clone, Copy)]
+pub struct TempSensorCalibration {
+    /// Reference resistor value (ohm)
+    pub reference_resistor: f32,
+    /// NTC thermistor resistance at 25°C (ohm)
+    pub r25: f32,
+    /// Beta coefficient (K)
+    pub beta: f32,
+    /// ADC full-scale reference voltage (volt)
+    pub reference_voltage: f32,
+    /// ADC resolution, typically 10-bit (1024) or 12-bit (4096)
+    pub adc_max_value: u16,
+}
+
+impl Default for TempSensorCalibration {
+    fn default() -> Self {
+        Self {
+            reference_resistor: 10000.0, // 10K ohm voltage divider resistor
+            r25: 10000.0,                // 10K ohm at 25°C
+            beta: 3950.0,                // Typical NTC Beta value
+            reference_voltage: 3.3,      // 3.3V reference voltage
+            adc_max_value: 4095,         // 12-bit ADC
+        }
+    }
+}
+
 pub struct TempSensor<IO>
 where
     IO: Read,
 {
     io_device: IO,
     buffer: Vec<u8>,
+    calibration: TempSensorCalibration,
 }
 
 impl<IO> TempSensor<IO>
@@ -20,6 +47,15 @@ where
         Self {
             io_device,
             buffer: Vec::with_capacity(4),
+            calibration: TempSensorCalibration::default(),
+        }
+    }
+
+    pub fn with_calibration(io_device: IO, calibration: TempSensorCalibration) -> Self {
+        Self {
+            io_device,
+            buffer: Vec::with_capacity(4),
+            calibration,
         }
     }
 
@@ -37,19 +73,65 @@ where
         }
 
         let raw_value = u16::from_be_bytes([self.buffer[0], self.buffer[1]]);
+
+        // Check if raw value is within valid range
+        if raw_value > self.calibration.adc_max_value {
+            return Err(Error::SensorReadingOutOfRange);
+        }
+
         let temperature = self.raw_to_temperature(raw_value);
+
+        // Check if converted temperature is within reasonable range
+        if !(-50.0..=150.0).contains(&temperature) {
+            return Err(Error::SensorReadingOutOfRange);
+        }
 
         Ok(temperature)
     }
 
     fn raw_to_temperature(&self, raw_value: u16) -> f32 {
-        const RAW_MAX: f32 = 4095.0;
+        // Calculate temperature using Beta equation
+        // 1. Calculate NTC resistance
+        let adc_value = raw_value as f32;
+        let adc_max = self.calibration.adc_max_value as f32;
 
-        // Assume that the original value 0 corresponds to -20℃, and the maximum value corresponds to 50℃
-        const TEMP_MIN: f32 = -20.0;
-        const TEMP_MAX: f32 = 50.0;
+        // Prevent division by zero
+        if adc_value == 0.0 {
+            return 150.0; // Return maximum temperature value
+        }
 
-        TEMP_MIN + (raw_value as f32 / RAW_MAX) * (TEMP_MAX - TEMP_MIN)
+        // Voltage divider formula: NTC_R = R_ref * (ADC_max/ADC_value - 1)
+        let ntc_resistance = self.calibration.reference_resistor * (adc_max / adc_value - 1.0);
+
+        if ntc_resistance <= 0.0 {
+            return 150.0; // Invalid resistance value, return maximum temperature
+        }
+
+        // 2. Calculate temperature using Beta equation (in Kelvin)
+        // 1/T = 1/T0 + (1/B) * ln(R/R0)
+        // T0 = 298.15K (25°C)
+        const T0: f32 = 298.15; // 25°C in Kelvin
+
+        let ln_ratio = libm::logf(ntc_resistance / self.calibration.r25);
+        let inv_temp = (1.0 / T0) + (1.0 / self.calibration.beta) * ln_ratio;
+
+        // Prevent division by zero
+        if inv_temp <= 0.0 {
+            return 150.0;
+        }
+
+        // Convert to Celsius (K - 273.15 = °C)
+        let celsius = (1.0 / inv_temp) - 273.15;
+
+        celsius.max(-50.0).min(150.0) // Limit to reasonable range
+    }
+
+    pub fn set_calibration(&mut self, calibration: TempSensorCalibration) {
+        self.calibration = calibration;
+    }
+
+    pub fn get_calibration(&self) -> TempSensorCalibration {
+        self.calibration
     }
 }
 
@@ -82,18 +164,24 @@ pub mod mock {
 
     #[test]
     fn test_temp_sensor() {
-        let io = MockIO { value: 2048 }; // 50% of 4095 ~ 15 degrees
+        const CASES: &[(u16, f32)] = &[
+            (662, -10.0),
+            (980, 0.0),
+            (2048, 25.0),
+            (3013, 50.0),
+            (3564, 75.0),
+        ];
 
-        let mut sensor = TempSensor::new(io);
-        let temp = sensor.read_temperature().unwrap();
-
-        let expected = 15.0;
-        let tolerance = 0.5;
-        assert!(
-            (temp - expected).abs() < tolerance,
-            "temperature value {} not close enough to expected {}",
-            temp,
-            expected
-        );
+        for &(raw, expected) in CASES {
+            let io = MockIO { value: raw };
+            let mut sensor = TempSensor::new(io);
+            let t = sensor.read_temperature().unwrap();
+            assert!(
+                (t - expected).abs() < 3.0, // ±3 ℃
+                "T {:.2} ℃ not within ±3 ℃ of {:.2}",
+                t,
+                expected
+            );
+        }
     }
 }

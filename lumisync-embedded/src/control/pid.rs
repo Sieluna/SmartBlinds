@@ -6,6 +6,7 @@ pub struct PIDController {
     previous_error: f32,
     integral: f32,
     last_output: f32,
+    last_setpoint: f32,
 }
 
 impl PIDController {
@@ -15,6 +16,7 @@ impl PIDController {
             previous_error: 0.0,
             integral: 0.0,
             last_output: 0.0,
+            last_setpoint: 0.0,
         }
     }
 
@@ -22,9 +24,28 @@ impl PIDController {
         self.previous_error = 0.0;
         self.integral = 0.0;
         self.last_output = 0.0;
+        self.last_setpoint = 0.0;
     }
 
     pub fn update(&mut self, setpoint: f32, measurement: f32, dt: f32) -> f32 {
+        const DT_EPSILON: f32 = 1e-6;
+        if dt < DT_EPSILON {
+            return self.last_output;
+        }
+
+        // Check if setpoint has changed significantly, clear integral term if true
+        const SETPOINT_CHANGE_THRESHOLD: f32 = 0.1; // 10% change is considered significant
+        let setpoint_change_ratio = if self.last_setpoint != 0.0 {
+            (setpoint - self.last_setpoint).abs() / self.last_setpoint.abs()
+        } else {
+            0.0
+        };
+
+        if setpoint_change_ratio > SETPOINT_CHANGE_THRESHOLD {
+            self.integral = 0.0;
+        }
+        self.last_setpoint = setpoint;
+
         // Calculate error
         let error = setpoint - measurement;
 
@@ -33,6 +54,10 @@ impl PIDController {
 
         // Integral term
         self.integral += error * dt;
+        let max_integral = self.params.max_output / self.params.ki;
+        let min_integral = self.params.min_output / self.params.ki;
+        self.integral = self.integral.clamp(min_integral, max_integral);
+
         let i_term = self.params.ki * self.integral;
 
         // Derivative term

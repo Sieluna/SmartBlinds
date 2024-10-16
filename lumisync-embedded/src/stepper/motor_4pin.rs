@@ -2,20 +2,36 @@ use embedded_hal::digital::OutputPin;
 
 use super::Motor;
 
+const FULL: [u8; 4] = [0b0101, 0b0011, 0b0110, 0b1001];
+const HALFS: [u8; 8] = [
+    0b0001, 0b0011, 0b0010, 0b0110, 0b0100, 0b1100, 0b1000, 0b1001,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StepMode {
+    FullStep,
+    HalfStep,
+}
+
 pub struct FourPinMotor<Pin>
 where
     Pin: OutputPin,
 {
     pins: [Pin; 4],
     pin_inverted: [bool; 4],
+    step_mode: StepMode,
 }
 
 impl<Pin> FourPinMotor<Pin>
 where
     Pin: OutputPin,
 {
-    pub fn new(pins: [Pin; 4], pin_inverted: [bool; 4]) -> Self {
-        Self { pins, pin_inverted }
+    pub fn new(pins: [Pin; 4], pin_inverted: [bool; 4], step_mode: StepMode) -> Self {
+        Self {
+            pins,
+            pin_inverted,
+            step_mode,
+        }
     }
 
     fn set_output_pins(&mut self, mask: u8) {
@@ -35,13 +51,11 @@ where
     Pin: OutputPin,
 {
     fn step(&mut self, step: i64) {
-        match step & 0x3 {
-            0 => self.set_output_pins(0b0101), // A1+B1
-            1 => self.set_output_pins(0b0011), // A1+A2
-            2 => self.set_output_pins(0b0110), // A2+B1
-            3 => self.set_output_pins(0b1001), // A1+B2
-            _ => {}
-        }
+        let mask = match (self.step_mode, step) {
+            (StepMode::FullStep, s) => FULL[(s & 0x3) as usize],
+            (StepMode::HalfStep, s) => HALFS[(s & 0x7) as usize],
+        };
+        self.set_output_pins(mask);
     }
 
     fn enable(&mut self) {
@@ -119,7 +133,7 @@ mod tests {
             MockPin::new(),
         ];
         let pin_inverted = [false, false, false, false];
-        let mut motor = FourPinMotor::new(pins, pin_inverted);
+        let mut motor = FourPinMotor::new(pins, pin_inverted, StepMode::FullStep);
 
         motor.step(0);
         motor.step(1);
@@ -161,7 +175,7 @@ mod tests {
             MockPin::new(),
         ];
         let pin_inverted = [false, false, false, false];
-        let mut motor = FourPinMotor::new(pins, pin_inverted);
+        let mut motor = FourPinMotor::new(pins, pin_inverted, StepMode::FullStep);
 
         motor.enable();
         for (i, pin) in motor.pins.iter().enumerate() {
@@ -203,7 +217,7 @@ mod tests {
             MockPin::new(),
         ];
         let pin_inverted = [true, true, true, true];
-        let mut motor = FourPinMotor::new(pins, pin_inverted);
+        let mut motor = FourPinMotor::new(pins, pin_inverted, StepMode::FullStep);
 
         motor.enable();
         for (i, pin) in motor.pins.iter().enumerate() {
