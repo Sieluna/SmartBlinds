@@ -1,0 +1,29 @@
+{
+  "name": "lumisync-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "lint": "eslint --ext .js,.jsx src"
+  },
+  "dependencies": {
+    "@solidjs/router": "^0.14",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "solid-js": "^1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "latest",
+    "autoprefixer": "latest",
+    "eslint": "latest",
+    "eslint-plugin-solid": "latest",
+    "global": "latest",
+    "postcss": "latest",
+    "tailwindcss": "latest",
+    "vite": "latest",
+    "vite-plugin-solid": "latest"
+  }
+}

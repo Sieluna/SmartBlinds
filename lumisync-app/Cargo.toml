@@ -1,0 +1,17 @@
+[package]
+name = "lumisync_app"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "lumisync_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
