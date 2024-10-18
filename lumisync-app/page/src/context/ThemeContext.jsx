@@ -1,5 +1,12 @@
-import { createContext, createSignal, createEffect, useContext, onMount, onCleanup } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import {
+  createContext,
+  createSignal,
+  createMemo,
+  createEffect,
+  useContext,
+  onMount,
+  onCleanup,
+} from 'solid-js';
 
 /**
  * Available themes for the application
@@ -17,89 +24,77 @@ const THEMES = {
 const ThemeContext = createContext();
 
 /**
+ * Get initial theme from localStorage or use system default
+ * @returns {string} The initial theme
+ */
+function getInitialTheme() {
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme && Object.values(THEMES).includes(savedTheme)) {
+    return savedTheme;
+  }
+  return THEMES.SYSTEM;
+}
+
+/**
  * Provider component for theme functionality
  * @param {Object} props - Component props
  * @param {any} props.children - Child components
  */
 export function ThemeProvider(props) {
-  // Get initial theme from localStorage or use system default
-  const getInitialTheme = () => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme && Object.values(THEMES).includes(savedTheme)) {
-      return savedTheme;
-    }
-    return THEMES.SYSTEM;
-  };
-
   const [theme, setTheme] = createSignal(getInitialTheme());
-  const [themeState, setThemeState] = createStore({
-    isDark: false,
-    currentTheme: getInitialTheme(),
-  });
+
+  // Determine if the theme is dark
+  const isDark = createMemo(
+    () =>
+      theme() === THEMES.DARK ||
+      (theme() === THEMES.SYSTEM && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  );
 
   // Apply theme to document
-  const applyTheme = newTheme => {
-    const root = document.documentElement;
-    const isDark =
-      newTheme === THEMES.DARK ||
-      (newTheme === THEMES.SYSTEM && window.matchMedia('(prefers-color-scheme: dark)').matches);
-
-    setThemeState({
-      isDark,
-      currentTheme: newTheme,
-    });
-
-    if (newTheme === THEMES.SYSTEM) {
-      root.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    } else {
-      root.setAttribute('data-theme', newTheme);
-    }
-
-    localStorage.setItem('theme', newTheme);
+  const applyTheme = () => {
+    document.documentElement.setAttribute('data-theme', isDark() ? 'dark' : 'light');
   };
 
   // Apply theme immediately on mount to prevent flashing
   onMount(() => {
-    applyTheme(theme());
+    applyTheme();
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => {
-      if (theme() === THEMES.SYSTEM) {
-        applyTheme(THEMES.SYSTEM);
-      }
-    };
+    const syncSystem = () => theme() === THEMES.SYSTEM && applyTheme();
 
-    mediaQuery.addEventListener('change', handleChange);
+    mediaQuery.addEventListener('change', syncSystem);
 
     onCleanup(() => {
-      mediaQuery.removeEventListener('change', handleChange);
+      mediaQuery.removeEventListener('change', syncSystem);
     });
   });
 
   // Watch for theme changes
   createEffect(() => {
     const currentTheme = theme();
+    localStorage.setItem('theme', currentTheme);
     applyTheme(currentTheme);
   });
 
   const toggleTheme = () => {
-    const currentTheme = theme();
-    if (currentTheme === THEMES.LIGHT) {
-      setTheme(THEMES.DARK);
-    } else if (currentTheme === THEMES.DARK) {
-      setTheme(THEMES.LIGHT);
-    } else {
-      setTheme(themeState.isDark ? THEMES.LIGHT : THEMES.DARK);
-    }
+    setTheme((prev) =>
+      prev === THEMES.LIGHT
+        ? THEMES.DARK
+        : prev === THEMES.DARK
+          ? THEMES.LIGHT
+          : isDark()
+            ? THEMES.LIGHT
+            : THEMES.DARK
+    );
   };
 
   return (
     <ThemeContext.Provider
       value={{
-        theme: () => theme(),
-        isDark: () => themeState.isDark,
+        theme,
+        isDark,
         themes: THEMES,
-        setTheme: (newTheme) => setTheme(newTheme),
+        setTheme,
         toggleTheme,
       }}
     >

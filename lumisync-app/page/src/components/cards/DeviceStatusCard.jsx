@@ -87,7 +87,7 @@ export function DeviceStatusCard(props) {
    * @param {string} type - Value type
    * @returns {string} Unit
    */
-  const getUnit = type => {
+  const getUnit = (type) => {
     switch (type) {
       case 'temperature':
         return '°C';
@@ -227,11 +227,19 @@ export function DeviceStatusCard(props) {
       description={getStatusDescription()}
       trend={
         local.device?.previous &&
-        getTrend(getPrimaryValue().type, local.device[getPrimaryValue().type], local.device.previous[getPrimaryValue().type])
+        getTrend(
+          getPrimaryValue().type,
+          local.device[getPrimaryValue().type],
+          local.device.previous[getPrimaryValue().type]
+        )
       }
       trendValue={
         local.device?.previous &&
-        getTrendValue(getPrimaryValue().type, local.device[getPrimaryValue().type], local.device.previous[getPrimaryValue().type])
+        getTrendValue(
+          getPrimaryValue().type,
+          local.device[getPrimaryValue().type],
+          local.device.previous[getPrimaryValue().type]
+        )
       }
       loading={local.loading}
       onClick={local.onClick}

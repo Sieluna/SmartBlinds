@@ -46,7 +46,7 @@ export function useResponsive() {
    * @param {string} breakpoint - Breakpoint name (xs, sm, md, lg, xl, 2xl)
    * @returns {boolean} True if screen width is greater than or equal to breakpoint
    */
-  const isAbove = breakpoint => {
+  const isAbove = (breakpoint) => {
     const minWidth = breakpoints[breakpoint] || 0;
     return windowSize().width >= minWidth;
   };
@@ -56,7 +56,7 @@ export function useResponsive() {
    * @param {string} breakpoint - Breakpoint name (xs, sm, md, lg, xl, 2xl)
    * @returns {boolean} True if screen width is less than breakpoint
    */
-  const isBelow = breakpoint => {
+  const isBelow = (breakpoint) => {
     const breakpointValues = Object.entries(breakpoints);
     const index = breakpointValues.findIndex(([key]) => key === breakpoint);
 

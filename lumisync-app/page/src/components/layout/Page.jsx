@@ -118,7 +118,7 @@ export function PageHeader(props) {
 export function PageContent(props) {
   const [local, others] = splitProps(props, ['children', 'class', 'padding']);
 
-  const padding = () => local.padding !== undefined ? local.padding : true;
+  const padding = () => (local.padding !== undefined ? local.padding : true);
 
   return (
     <div class={`${padding() ? 'py-6' : ''} ${local.class ?? ''}`} {...others}>

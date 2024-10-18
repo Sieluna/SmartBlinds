@@ -4,10 +4,10 @@
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-:root[data-theme=light] {
+:root[data-theme='light'] {
   color-scheme: light;
 }
 
-:root[data-theme=dark] {
+:root[data-theme='dark'] {
   color-scheme: dark;
 }

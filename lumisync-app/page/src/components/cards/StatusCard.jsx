@@ -106,7 +106,7 @@ export function StatusCard(props) {
   };
 
   return (
-    <div class={getVariantClasses()} onClick={e => local?.onClick?.(e)} {...others}>
+    <div class={getVariantClasses()} onClick={(e) => local?.onClick?.(e)} {...others}>
       <Show
         when={!local.loading}
         fallback={

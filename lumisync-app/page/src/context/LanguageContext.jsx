@@ -1,5 +1,4 @@
 import { createContext, createSignal, useContext, createEffect } from 'solid-js';
-import { createStore } from 'solid-js/store';
 
 /**
  * Available languages for the application
@@ -16,30 +15,32 @@ const LANGUAGES = {
 const LanguageContext = createContext();
 
 /**
+ * Get initial language from localStorage or browser setting
+ * @returns {string} The initial language
+ */
+function getInitialLang() {
+  const savedLang = localStorage.getItem('language');
+  if (savedLang && Object.values(LANGUAGES).includes(savedLang)) {
+    return savedLang;
+  }
+
+  const browserLang = navigator.language.split('-')[0];
+  if (Object.values(LANGUAGES).includes(browserLang)) {
+    return browserLang;
+  }
+
+  return LANGUAGES.EN;
+}
+
+/**
  * Provider component for language functionality
  * @param {Object} props - Component props
  * @param {any} props.children - Child components
  * @param {Object} props.translations - Translation dictionaries for all supported languages
  */
 export function LanguageProvider(props) {
-  // Get initial language from localStorage or browser setting
-  const getInitialLang = () => {
-    const savedLang = localStorage.getItem('language');
-    if (savedLang && Object.values(LANGUAGES).includes(savedLang)) {
-      return savedLang;
-    }
-
-    // Use browser language if available and supported
-    const browserLang = navigator.language.split('-')[0];
-    if (Object.values(LANGUAGES).includes(browserLang)) {
-      return browserLang;
-    }
-
-    return LANGUAGES.EN; // Default fallback
-  };
-
   const [language, setLanguage] = createSignal(getInitialLang());
-  const [translations, setTranslations] = createStore({});
+  const [translations, setTranslations] = createSignal({});
 
   createEffect(() => {
     if (props.translations) {
@@ -61,7 +62,7 @@ export function LanguageProvider(props) {
    */
   const t = (key, params = {}) => {
     const keys = key.split('.');
-    let value = translations[language()] || {};
+    let value = translations()[language()] || {};
 
     // Traverse the nested keys
     for (const k of keys) {
@@ -71,7 +72,7 @@ export function LanguageProvider(props) {
 
     if (typeof value !== 'string') {
       // Fallback to English or return the key itself
-      let fallback = translations[LANGUAGES.EN];
+      let fallback = translations()[LANGUAGES.EN];
       for (const k of keys) {
         fallback = fallback?.[k];
         if (fallback === undefined) break;
@@ -81,7 +82,7 @@ export function LanguageProvider(props) {
 
     // Replace parameters in the string
     return value.replace(/\{\{(\w+)\}\}/g, (_, key) =>
-      Object.prototype.hasOwnProperty.call(params, key) ? params[key] : `{{${key}}}`,
+      Object.prototype.hasOwnProperty.call(params, key) ? params[key] : `{{${key}}}`
     );
   };
 
@@ -89,7 +90,7 @@ export function LanguageProvider(props) {
    * Change the current language
    * @param {string} newLang - New language code
    */
-  const changeLanguage = newLang => {
+  const changeLanguage = (newLang) => {
     if (!Object.values(LANGUAGES).includes(newLang)) {
       console.warn(`Language ${newLang} is not supported`);
       return;
@@ -104,14 +105,14 @@ export function LanguageProvider(props) {
    * Add or update translations
    * @param {Object} newTranslations - New translations to add
    */
-  const addTranslations = newTranslations => {
-    setTranslations(prev => ({ ...prev, ...newTranslations }));
+  const addTranslations = (newTranslations) => {
+    setTranslations((prev) => ({ ...prev, ...newTranslations }));
   };
 
   return (
     <LanguageContext.Provider
       value={{
-        language: () => language(),
+        language,
         languages: LANGUAGES,
         t,
         changeLanguage,
