@@ -1,10 +1,12 @@
-import { createSignal } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 import { Button } from '../components/ui/Button.jsx';
 import { Input } from '../components/ui/Input.jsx';
 import { Select } from '../components/ui/Select.jsx';
+import { Form } from '../components/ui/Form.jsx';
 import { Tabs, TabPanel } from '../components/layout/Tabs.jsx';
 import { Page, PageContent } from '../components/layout/Page.jsx';
 import { Container } from '../components/layout/Container.jsx';
+import { List } from '../components/ui/List.jsx';
 
 export function Debug() {
   // Current active tab
@@ -37,6 +39,20 @@ export function Debug() {
   const [selectValue, setSelectValue] = createSignal('');
   const [selectError, setSelectError] = createSignal(false);
   const [selectDisabled, setSelectDisabled] = createSignal(false);
+
+  // List testing signals
+  const [listType, setListType] = createSignal(List.TYPES.SIMPLE);
+  const [listSize, setListSize] = createSignal(List.SIZES.MD);
+  const [listVariant, setListVariant] = createSignal(List.VARIANTS.DEFAULT);
+  const [listOrientation, setListOrientation] = createSignal(List.ORIENTATIONS.VERTICAL);
+  const [listHoverable, setListHoverable] = createSignal(true);
+  const [listSelectable, setListSelectable] = createSignal(true);
+  const [listSelectedValue, setListSelectedValue] = createSignal('');
+
+  // Form testing signals
+  const [formSize, setFormSize] = createSignal(Form.SIZES.MD);
+  const [formVariant, setFormVariant] = createSignal(Form.VARIANTS.DEFAULT);
+  const [formSubmitMessage, setFormSubmitMessage] = createSignal('');
 
   // Common test options
   const testOptions = [
@@ -74,11 +90,143 @@ export function Debug() {
     </svg>
   );
 
+  // List items
+  const listItems = [
+    {
+      title: 'Test 1',
+      description: 'Test description 1',
+      value: 'test',
+      avatar: <SearchIcon />,
+      action: (
+        <Button size="xs" variant="ghost">
+          Edit
+        </Button>
+      ),
+    },
+    {
+      title: 'Test 2',
+      description: 'Test description 2',
+      value: 'test',
+      avatar: <SearchIcon />,
+      action: (
+        <Button size="xs" variant="ghost">
+          Edit
+        </Button>
+      ),
+    },
+    {
+      title: 'Test 3',
+      description: 'Test description 3',
+      value: 'test',
+      avatar: <SearchIcon />,
+      disabled: true,
+      action: (
+        <Button size="xs" variant="ghost" disabled>
+          Edit
+        </Button>
+      ),
+    },
+  ];
+
+  const simpleListItems = ['First Item', 'Second Item', 'Third Item', 'Fourth Item'];
+
+  const descriptionItems = [
+    { term: 'Name', content: 'Test 1' },
+    { term: 'Email', content: 'test@example.com' },
+  ];
+
+  // Form initial values and validation rules
+  const formInitialValues = {
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    role: '',
+    agreeToTerms: false,
+  };
+
+  const formValidationRules = {
+    name: [
+      {
+        type: Form.VALIDATION_TYPES.REQUIRED,
+        message: 'Name is required',
+      },
+      {
+        type: Form.VALIDATION_TYPES.MIN_LENGTH,
+        value: 2,
+        message: 'Name must be at least 2 characters',
+      },
+      {
+        type: Form.VALIDATION_TYPES.MAX_LENGTH,
+        value: 50,
+        message: 'Name cannot exceed 50 characters',
+      },
+    ],
+    email: [
+      {
+        type: Form.VALIDATION_TYPES.REQUIRED,
+        message: 'Email is required',
+      },
+      {
+        type: Form.VALIDATION_TYPES.EMAIL,
+        message: 'Please enter a valid email address',
+      },
+    ],
+    password: [
+      {
+        type: Form.VALIDATION_TYPES.REQUIRED,
+        message: 'Password is required',
+      },
+      {
+        type: Form.VALIDATION_TYPES.MIN_LENGTH,
+        value: 6,
+        message: 'Password must be at least 6 characters',
+      },
+      {
+        type: Form.VALIDATION_TYPES.PATTERN,
+        value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+        message:
+          'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+      },
+    ],
+    confirmPassword: [
+      {
+        type: Form.VALIDATION_TYPES.REQUIRED,
+        message: 'Please confirm your password',
+      },
+      {
+        type: Form.VALIDATION_TYPES.CUSTOM,
+        validator: (value, values) => value === values.password,
+        message: 'Passwords do not match',
+      },
+    ],
+    role: [
+      {
+        type: Form.VALIDATION_TYPES.REQUIRED,
+        message: 'Please select a role',
+      },
+    ],
+    agreeToTerms: [
+      {
+        type: Form.VALIDATION_TYPES.CUSTOM,
+        validator: (value) => value === true,
+        message: 'You must agree to the terms and conditions',
+      },
+    ],
+  };
+
+  const roleOptions = [
+    { label: 'Admin', value: 'admin' },
+    { label: 'User', value: 'user' },
+  ];
+
   // Tab definitions
   const tabs = [
     { id: 'button', label: 'Button' },
     { id: 'input', label: 'Input' },
     { id: 'select', label: 'Select' },
+    { id: 'list', label: 'List' },
+    { id: 'form', label: 'Form' },
   ];
 
   // Control Panel Component
@@ -392,6 +540,246 @@ Size: ${selectSize()}
 Variant: ${selectVariant()}
 Orientation: ${selectOrientation()}
 Selected: "${selectValue()}"${selectError() ? '\nError: true' : ''}${selectDisabled() ? '\nDisabled: true' : ''}`}
+              />
+            </TabPanel>
+
+            {/* List Tab */}
+            <TabPanel id="list" activeTab={activeTab()}>
+              <ComponentLayout
+                title="List"
+                controls={
+                  <>
+                    <Select
+                      type={Select.TYPES.SELECT}
+                      label="Type"
+                      size="sm"
+                      placeholder="Select type"
+                      options={[
+                        { label: 'Simple', value: List.TYPES.SIMPLE },
+                        { label: 'Unordered', value: List.TYPES.UNORDERED },
+                        { label: 'Ordered', value: List.TYPES.ORDERED },
+                        { label: 'Description', value: List.TYPES.DESCRIPTION },
+                      ]}
+                      value={listType()}
+                      onChange={setListType}
+                    />
+                    <Select
+                      type={Select.TYPES.SELECT}
+                      label="Size"
+                      size="sm"
+                      placeholder="Select size"
+                      options={Object.values(List.SIZES).map((size) => ({
+                        label: size.toUpperCase(),
+                        value: size,
+                      }))}
+                      value={listSize()}
+                      onChange={setListSize}
+                    />
+                    <Select
+                      type={Select.TYPES.SELECT}
+                      label="Variant"
+                      size="sm"
+                      placeholder="Select style"
+                      options={Object.values(List.VARIANTS).map((variant) => ({
+                        label: variant.charAt(0).toUpperCase() + variant.slice(1),
+                        value: variant,
+                      }))}
+                      value={listVariant()}
+                      onChange={setListVariant}
+                    />
+                    <Select
+                      type={Select.TYPES.SELECT}
+                      label="Orientation"
+                      size="sm"
+                      placeholder="Select orientation"
+                      options={Object.values(List.ORIENTATIONS).map((orientation) => ({
+                        label: orientation.charAt(0).toUpperCase() + orientation.slice(1),
+                        value: orientation,
+                      }))}
+                      value={listOrientation()}
+                      onChange={setListOrientation}
+                    />
+                    <Select
+                      type={Select.TYPES.CHECKBOX}
+                      label="Hoverable"
+                      value={listHoverable()}
+                      onChange={setListHoverable}
+                    />
+                    <Select
+                      type={Select.TYPES.CHECKBOX}
+                      label="Selectable"
+                      value={listSelectable()}
+                      onChange={setListSelectable}
+                    />
+                  </>
+                }
+                preview={
+                  <div class="w-full max-w-sm">
+                    <List
+                      type={listType()}
+                      size={listSize()}
+                      variant={listVariant()}
+                      orientation={listOrientation()}
+                      hoverable={listHoverable()}
+                      selectable={listSelectable()}
+                      selectedValue={listSelectedValue()}
+                      onItemSelect={setListSelectedValue}
+                      items={
+                        listType() === List.TYPES.DESCRIPTION
+                          ? descriptionItems
+                          : listType() === List.TYPES.SIMPLE &&
+                              listVariant() === List.VARIANTS.DEFAULT
+                            ? simpleListItems
+                            : listItems
+                      }
+                    />
+                    {listSelectedValue() && (
+                      <div class="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-sm">
+                        Selected: {listSelectedValue()}
+                      </div>
+                    )}
+                  </div>
+                }
+                info={`Type: ${listType()}
+Size: ${listSize()}
+Variant: ${listVariant()}
+Orientation: ${listOrientation()}
+Hoverable: ${listHoverable()}
+Selectable: ${listSelectable()}
+Selected: "${listSelectedValue()}"`}
+              />
+            </TabPanel>
+
+            {/* Form Tab */}
+            <TabPanel id="form" activeTab={activeTab()}>
+              <ComponentLayout
+                title="Form"
+                controls={
+                  <>
+                    <Select
+                      type={Select.TYPES.SELECT}
+                      label="Size"
+                      size="sm"
+                      placeholder="Select size"
+                      options={Object.values(Form.SIZES).map((size) => ({
+                        label: size.toUpperCase(),
+                        value: size,
+                      }))}
+                      value={formSize()}
+                      onChange={setFormSize}
+                    />
+                    <Select
+                      type={Select.TYPES.SELECT}
+                      label="Variant"
+                      size="sm"
+                      placeholder="Select variant"
+                      options={Object.values(Form.VARIANTS).map((variant) => ({
+                        label: variant.charAt(0).toUpperCase() + variant.slice(1),
+                        value: variant,
+                      }))}
+                      value={formVariant()}
+                      onChange={setFormVariant}
+                    />
+                  </>
+                }
+                preview={
+                  <div class="w-full max-w-lg">
+                    <Form
+                      size={formSize()}
+                      variant={formVariant()}
+                      initialValues={formInitialValues}
+                      validationRules={formValidationRules}
+                      onSubmit={async (values) => {
+                        await new Promise((resolve) => setTimeout(resolve, 2000));
+                        setFormSubmitMessage(values);
+                      }}
+                    >
+                      <Form.Input
+                        type="text"
+                        name="name"
+                        label="Full Name"
+                        description="Enter your first and last name"
+                        placeholder="e.g. John Doe"
+                        rules={formValidationRules.name}
+                      />
+
+                      <Form.Input
+                        type="email"
+                        name="email"
+                        label="Email Address"
+                        description="We'll use this to contact you about your account"
+                        placeholder="e.g. john@example.com"
+                        rules={formValidationRules.email}
+                      />
+
+                      <Form.Input
+                        type="password"
+                        name="password"
+                        label="Password"
+                        description="Must be at least 6 characters long"
+                        placeholder="Enter a secure password"
+                        rules={formValidationRules.password}
+                      />
+
+                      <Form.Input
+                        type="password"
+                        name="confirmPassword"
+                        label="Confirm Password"
+                        description="Re-enter your password to confirm"
+                        placeholder="Confirm your password"
+                        rules={formValidationRules.confirmPassword}
+                      />
+
+                      <Form.Select
+                        type={Select.TYPES.SELECT}
+                        name="role"
+                        label="Role"
+                        description="Select your primary role or expertise"
+                        placeholder="Choose your role"
+                        options={roleOptions}
+                        rules={formValidationRules.role}
+                      />
+
+                      <Form.Input
+                        type="text"
+                        name="bio"
+                        label="Bio (Optional)"
+                        description="Tell us a bit about yourself (max 200 characters)"
+                        placeholder="I'm a developer who loves..."
+                        rules={formValidationRules.bio}
+                      />
+
+                      <Form.Select
+                        type={Select.TYPES.CHECKBOX}
+                        name="agreeToTerms"
+                        label="I agree to the terms and conditions"
+                        description="Please read our terms before agreeing"
+                        rules={formValidationRules.agreeToTerms}
+                      />
+
+                      <div class="flex gap-3 pt-4">
+                        <Form.SubmitButton loadingText="Submitting...">
+                          Submit Form
+                        </Form.SubmitButton>
+                        <Form.ResetButton>Reset</Form.ResetButton>
+                      </div>
+
+                      <Show when={formSubmitMessage()}>
+                        <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                          <h4 class="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                            Submitted Data:
+                          </h4>
+                          <pre class="text-xs text-blue-700 dark:text-blue-300 overflow-auto">
+                            {JSON.stringify(formSubmitMessage(), null, 2)}
+                          </pre>
+                        </div>
+                      </Show>
+                    </Form>
+                  </div>
+                }
+                info={`Size: ${formSize()}
+Variant: ${formVariant()}
+Status: ${formSubmitMessage() || 'Ready'}`}
               />
             </TabPanel>
           </Tabs>

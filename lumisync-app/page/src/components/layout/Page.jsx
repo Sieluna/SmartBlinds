@@ -1,5 +1,4 @@
 import { splitProps } from 'solid-js';
-
 import { Container } from './Container.jsx';
 
 /**

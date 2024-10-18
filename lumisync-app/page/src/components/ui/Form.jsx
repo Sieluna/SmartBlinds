@@ -1,175 +1,63 @@
 import {
-  splitProps,
-  createEffect,
   createContext,
   useContext,
-  children as resolveChildren,
+  createSignal,
+  createMemo,
+  createEffect,
+  batch,
+  untrack,
+  splitProps,
+  mergeProps,
+  Switch,
+  Match,
   Show,
 } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, produce } from 'solid-js/store';
+import { Input } from './Input.jsx';
+import { Button } from './Button.jsx';
+import { Select } from './Select.jsx';
 
 /**
- * Form context to manage form state and actions
+ * Available form size options
+ * @constant {Object}
+ */
+const SIZES = {
+  SM: 'sm',
+  MD: 'md',
+  LG: 'lg',
+};
+
+/**
+ * Available form style variants
+ * @constant {Object}
+ */
+const VARIANTS = {
+  DEFAULT: 'default',
+  COMPACT: 'compact',
+  CARD: 'card',
+};
+
+/**
+ * Available validation rule types
+ * @constant {Object}
+ */
+const VALIDATION_TYPES = {
+  REQUIRED: 'required',
+  EMAIL: 'email',
+  MIN_LENGTH: 'minLength',
+  MAX_LENGTH: 'maxLength',
+  PATTERN: 'pattern',
+  CUSTOM: 'custom',
+};
+
+/**
+ * Form context for state management
  */
 const FormContext = createContext();
 
 /**
- * Form component for creating and managing forms with validation and state management
- * @param {Object} props - Component properties
- * @param {Object} [props.initialValues={}] - Initial form values
- * @param {Object} [props.validator] - Object containing validation functions for each field
- * @param {Function} [props.onSubmit] - Form submission handler
- * @param {string} [props.class=''] - Additional CSS classes
- * @param {JSXElement} props.children - Form content
- * @returns {JSXElement} Rendered form component
- */
-export function Form(props) {
-  const [local, others] = splitProps(props, [
-    'children',
-    'class',
-    'onSubmit',
-    'initialValues',
-    'validator',
-  ]);
-
-  const [formState, setFormState] = createStore({
-    values: local.initialValues ?? {},
-    errors: {},
-    touched: {},
-    isSubmitting: false,
-    isValid: true,
-  });
-
-  /**
-   * Set a field value
-   * @param {string} name - Field name
-   * @param {any} value - Field value
-   */
-  const setFieldValue = (name, value) => {
-    setFormState('values', name, value);
-    setFormState('touched', name, true);
-
-    // Validate field if validator is provided
-    if (local.validator && local.validator[name]) {
-      const error = local.validator[name](value, formState.values);
-      setFormState('errors', name, error);
-    }
-
-    // Update isValid state
-    updateValidState();
-  };
-
-  /**
-   * Set a field error
-   * @param {string} name - Field name
-   * @param {string} error - Error message
-   */
-  const setFieldError = (name, error) => {
-    setFormState('errors', name, error);
-    updateValidState();
-  };
-
-  /**
-   * Set touched state for a field
-   * @param {string} name - Field name
-   * @param {boolean} isTouched - Whether field is touched
-   */
-  const setFieldTouched = (name, isTouched = true) => {
-    setFormState('touched', name, isTouched);
-  };
-
-  /**
-   * Update the form validity state
-   */
-  const updateValidState = () => {
-    const hasErrors = Object.values(formState.errors).some((error) => error !== undefined);
-    setFormState('isValid', !hasErrors);
-  };
-
-  /**
-   * Reset the form to initial values
-   */
-  const resetForm = () => {
-    setFormState({
-      values: local.initialValues ?? {},
-      errors: {},
-      touched: {},
-      isSubmitting: false,
-      isValid: true,
-    });
-  };
-
-  /**
-   * Handle form submission
-   * @param {Event} event - Form submit event
-   */
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    setFormState('isSubmitting', true);
-
-    // Run validation if validator is provided
-    if (local.validator) {
-      const newErrors = {};
-      let hasErrors = false;
-
-      Object.entries(local.validator).forEach(([field, validator]) => {
-        const error = validator(formState.values[field], formState.values);
-        if (error) {
-          newErrors[field] = error;
-          hasErrors = true;
-        }
-      });
-
-      setFormState('errors', newErrors);
-      setFormState('isValid', !hasErrors);
-
-      if (hasErrors) {
-        setFormState('isSubmitting', false);
-        return;
-      }
-    }
-
-    // Call onSubmit handler if provided
-    if (local.onSubmit) {
-      try {
-        await local.onSubmit(formState.values, {
-          setFieldError,
-          resetForm,
-          setFormState,
-        });
-      } catch (error) {
-        console.error('Form submission error:', error);
-      }
-    }
-
-    setFormState('isSubmitting', false);
-  };
-
-  const formContext = {
-    values: () => formState.values,
-    errors: () => formState.errors,
-    touched: () => formState.touched,
-    isSubmitting: () => formState.isSubmitting,
-    isValid: () => formState.isValid,
-    setFieldValue,
-    setFieldError,
-    setFieldTouched,
-    resetForm,
-  };
-
-  return (
-    <FormContext.Provider value={formContext}>
-      <form class={`${local.class ?? ''}`} onSubmit={handleSubmit} novalidate {...others}>
-        {local.children}
-      </form>
-    </FormContext.Provider>
-  );
-}
-
-/**
- * Custom hook for using form context
- * @returns {Object} Form context value
+ * Hook to access form context
+ * @returns {Object} Form context
  */
 export function useForm() {
   const context = useContext(FormContext);
@@ -180,237 +68,553 @@ export function useForm() {
 }
 
 /**
- * FormField component for managing individual form fields with validation and error handling
+ * Create form store with validation and submission logic
+ * @param {Object} initialValues - Initial form values
+ * @param {Object} validationRules - Validation rules
+ * @returns {Object} Form store
+ */
+export function createFormStore(initialValues = {}, validationRules = {}) {
+  const [state, setState] = createStore({
+    values: initialValues,
+    errors: {},
+    touched: {},
+  });
+
+  const [isSubmitting, setIsSubmitting] = createSignal(false);
+  const [submitCount, setSubmitCount] = createSignal(0);
+
+  const validateField = (name, value, rules) => {
+    if (!rules) return null;
+
+    for (const rule of rules) {
+      let isValid = true;
+      let message = '';
+
+      switch (rule.type) {
+        case VALIDATION_TYPES.REQUIRED:
+          isValid = value !== undefined && value !== null && value !== '';
+          message = rule.message || `${name} is required`;
+          break;
+
+        case VALIDATION_TYPES.EMAIL:
+          isValid = !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+          message = rule.message || 'Please enter a valid email address';
+          break;
+
+        case VALIDATION_TYPES.MIN_LENGTH:
+          isValid = !value || value.length >= rule.value;
+          message = rule.message || `Must be at least ${rule.value} characters`;
+          break;
+
+        case VALIDATION_TYPES.MAX_LENGTH:
+          isValid = !value || value.length <= rule.value;
+          message = rule.message || `Must be no more than ${rule.value} characters`;
+          break;
+
+        case VALIDATION_TYPES.PATTERN:
+          isValid = !value || rule.value.test(value);
+          message = rule.message || 'Invalid format';
+          break;
+
+        case VALIDATION_TYPES.CUSTOM:
+          try {
+            isValid = rule.validator(value, state.values);
+            message = rule.message || 'Invalid value';
+          } catch (error) {
+            isValid = false;
+            message = error.message || 'Validation error';
+          }
+          break;
+
+        default:
+          break;
+      }
+
+      if (!isValid) {
+        return message;
+      }
+    }
+
+    return null;
+  };
+
+  /**
+   * Validate entire form
+   * @returns {boolean} Whether form is valid
+   */
+  const validateForm = () => {
+    const newErrors = {};
+    const { values } = state;
+
+    for (const [name, rules] of Object.entries(validationRules)) {
+      const error = validateField(name, values[name], rules);
+      if (error) {
+        newErrors[name] = error;
+      }
+    }
+
+    setState('errors', newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  /**
+   * Set field value and clear error
+   * @param {string} name - Field name
+   * @param {*} value - Field value
+   */
+  const setValue = (name, value) => {
+    batch(() => {
+      setState('values', name, value);
+      setState(
+        'errors',
+        produce((errors) => {
+          delete errors[name];
+        })
+      );
+    });
+  };
+
+  /**
+   * Mark field as touched
+   * @param {string} name - Field name
+   * @param {boolean} isTouched - Whether field is touched
+   */
+  const setFieldTouched = (name, isTouched = true) => {
+    setState('touched', name, isTouched);
+  };
+
+  /**
+   * Set field error
+   * @param {string} name - Field name
+   * @param {string|null} error - Error message
+   */
+  const setFieldError = (name, error) => {
+    if (error == null) {
+      setState(
+        'errors',
+        produce((errors) => {
+          delete errors[name];
+        })
+      );
+    } else {
+      setState('errors', name, error);
+    }
+  };
+
+  /**
+   * Reset form to initial state
+   */
+  const reset = () => {
+    batch(() => {
+      setState('values', initialValues);
+      setState('errors', {});
+      setState('touched', {});
+      setSubmitCount(0);
+    });
+  };
+
+  // Computed values
+  const isValid = createMemo(() => Object.keys(state.errors).length === 0);
+  const isDirty = createMemo(() => {
+    const { values } = state;
+    return Object.keys(values).some((key) => values[key] !== initialValues[key]);
+  });
+
+  return {
+    values: () => state.values,
+    errors: () => state.errors,
+    touched: () => state.touched,
+    isSubmitting,
+    submitCount,
+    isValid,
+    isDirty,
+    setValue,
+    setFieldTouched,
+    setFieldError,
+    setIsSubmitting,
+    setSubmitCount,
+    validateField,
+    validateForm,
+    reset,
+  };
+}
+
+/**
+ * Create field controller for shared field logic
+ * @param {string} name - Field name
+ * @param {Array} rules - Validation rules
+ * @param {Object} options - Field options
+ * @returns {Object} Field controller
+ */
+function createFieldController(name, rules, options) {
+  const { validateOnBlur, validateOnChange } = options;
+  const form = useForm();
+
+  const value = () => form.values()[name] ?? '';
+  const error = () => form.errors()[name];
+  const touched = () => form.touched()[name];
+
+  const handleChange = (newValue) => {
+    let processedValue = newValue;
+
+    if (newValue && typeof newValue === 'object' && newValue.target) {
+      processedValue = newValue.target.value;
+    }
+
+    if (processedValue === undefined || processedValue === null) {
+      processedValue = '';
+    }
+
+    form.setValue(name, processedValue);
+
+    if (validateOnChange && rules) {
+      const error = form.validateField(name, processedValue, rules);
+      form.setFieldError(name, error);
+    }
+  };
+
+  const handleBlur = () => {
+    form.setFieldTouched(name, true);
+
+    if (validateOnBlur && rules) {
+      const error = form.validateField(name, value(), rules);
+      form.setFieldError(name, error);
+    }
+  };
+
+  // Auto-validate when field was touched or form was submitted
+  createEffect(() => {
+    const currentValue = value();
+    const hasBeenTouched = touched();
+    const hasBeenSubmitted = form.submitCount() > 0;
+
+    if ((hasBeenTouched || hasBeenSubmitted) && rules) {
+      const error = form.validateField(name, currentValue, rules);
+      form.setFieldError(name, error);
+    }
+  });
+
+  return {
+    value,
+    error,
+    touched,
+    change: handleChange,
+    blur: handleBlur,
+  };
+}
+
+/**
+ * Form field wrapper component
  * @param {Object} props - Component properties
- * @param {string} props.name - Field name
- * @param {string} [props.label] - Field label
- * @param {string} [props.hint] - Helper text
- * @param {boolean} [props.required=false] - Whether field is required
- * @param {Function} [props.onChange] - Change event handler
- * @param {Function} [props.onBlur] - Blur event handler
- * @param {any} [props.value] - Field value
- * @param {string} [props.error] - Error message
- * @param {string} [props.class=''] - Additional CSS classes
- * @param {JSXElement|Function} props.children - Field content or render function
- * @returns {JSXElement} Rendered form field component
  */
 export function FormField(props) {
-  const [local, others] = splitProps(props, [
-    'children',
-    'class',
+  const merged = mergeProps(
+    {
+      component: 'input',
+      validateOnBlur: true,
+      validateOnChange: false,
+    },
+    props
+  );
+
+  const [local, others] = splitProps(merged, [
     'name',
     'label',
-    'hint',
-    'required',
-    'onChange',
-    'onBlur',
-    'value',
-    'error',
+    'description',
+    'component',
+    'children',
+    'validateOnBlur',
+    'validateOnChange',
+    'rules',
+    'class',
   ]);
+
+  const controller = createFieldController(local.name, local.rules, {
+    validateOnBlur: local.validateOnBlur,
+    validateOnChange: local.validateOnChange,
+  });
 
   const form = useForm();
 
-  // Update form value when component value changes
-  createEffect(() => {
-    if (local.value !== undefined) {
-      form.setFieldValue(local.name, local.value);
-    }
-  });
+  const isRequired = () => local.rules?.some((rule) => rule.type === VALIDATION_TYPES.REQUIRED);
+  const maxLengthRule = () =>
+    local.rules?.find((rule) => rule.type === VALIDATION_TYPES.MAX_LENGTH);
+  const shouldShowError = () =>
+    controller.error() && (controller.touched() || form.submitCount() > 0);
 
-  // Sync with externally provided error
-  createEffect(() => {
-    if (local.error !== undefined) {
-      form.setFieldError(local.name, local.error);
-    }
-  });
-
-  /**
-   * Handle field change event
-   * @param {Event} event - Change event
-   */
-  const handleChange = (event) => {
-    const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
-    form.setFieldValue(local.name, value);
-    local.onChange?.(event);
-  };
-
-  /**
-   * Handle field blur event
-   * @param {Event} event - Blur event
-   */
-  const handleBlur = (event) => {
-    form.setFieldTouched(local.name, true);
-    local.onBlur?.(event);
-  };
-
-  /**
-   * Get field value from form state or local props
-   * @returns {any} Field value
-   */
-  const getValue = () => {
-    // Priority: local prop value > form value
-    return local.value !== undefined ? local.value : form.values()[local.name];
-  };
-
-  /**
-   * Check if field has an error
-   * @returns {boolean} Whether field has error
-   */
-  const hasError = () => {
-    return !!form.errors()[local.name] && form.touched()[local.name];
-  };
-
-  /**
-   * Get field error message
-   * @returns {string|undefined} Error message
-   */
-  const getErrorMessage = () => {
-    return hasError() ? form.errors()[local.name] : undefined;
-  };
-
-  /**
-   * Check if field is a checkbox or radio
-   * @returns {boolean} Whether field is a checkbox or radio
-   */
-  const isCheckboxOrRadio = () => {
-    const childrenArray = Array.isArray(local.children) ? local.children : [local.children];
-    for (const child of childrenArray) {
-      if (child && typeof child === 'object') {
-        if (
-          child.type &&
-          (child.type.name === 'Checkbox' ||
-            child.type.name === 'Radio' ||
-            child.type === 'checkbox' ||
-            child.type === 'radio')
-        ) {
-          return true;
-        }
-
-        if (
-          child.props &&
-          child.props.type &&
-          (child.props.type === 'checkbox' || child.props.type === 'radio')
-        ) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-
-  // Build props for child input component
-  const getInputProps = (childProps = {}) => {
-    return {
-      id: `field-${local.name}`,
-      name: local.name,
-      value: getValue() || '',
-      checked:
-        childProps.type === 'checkbox' || childProps.type === 'radio' ? !!getValue() : undefined,
-      'aria-invalid': hasError() ? 'true' : 'false',
-      'aria-describedby': hasError()
-        ? `${local.name}-error`
-        : local.hint
-          ? `${local.name}-hint`
-          : undefined,
-      onChange: handleChange,
-      onBlur: handleBlur,
-      required: local.required,
-      ...childProps,
-    };
-  };
-
-  // Inject form props into children
-  const resolvedChildren = resolveChildren(() => {
-    const childrenArray = Array.isArray(local.children) ? local.children : [local.children];
-
-    return childrenArray.map((child) => {
-      if (typeof child === 'function' && child.length > 0) {
-        return child(getInputProps);
-      }
-
-      if (child && typeof child === 'object' && child.type) {
-        const componentName = child.type.name;
-
-        if (componentName === 'Checkbox' || componentName === 'Radio') {
-          const childProps = {
-            ...child.props,
-            onChange: handleChange,
-            onBlur: handleBlur,
-            checked: !!getValue(),
-            error: hasError() ? getErrorMessage() : undefined,
-          };
-
-          return {
-            ...child,
-            props: childProps,
-          };
-        }
-      }
-
-      return child;
-    });
+  const fieldProps = () => ({
+    value: controller.value(),
+    error: controller.error(),
+    onBlur: controller.blur,
+    onChange: controller.change,
+    onInput: (e) => controller.change(e.target.value),
+    ...others,
   });
 
   return (
-    <Show
-      when={isCheckboxOrRadio()}
-      fallback={
-        <div class={`mb-4 ${local.class ?? ''}`} {...others}>
-          {local.label && (
-            <label
-              for={`field-${local.name}`}
-              class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+    <div class={`form-field ${local.class || ''}`}>
+      {/* Label with required indicator */}
+      <Show when={local.label}>
+        <label
+          for={local.name}
+          class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+        >
+          {local.label}
+          <Show when={isRequired()}>
+            <span class="text-red-500 ml-1" aria-label="required">
+              *
+            </span>
+          </Show>
+        </label>
+      </Show>
+
+      {/* Field renderer */}
+      <Switch>
+        <Match when={local.children}>
+          {typeof local.children === 'function' ? local.children(fieldProps()) : local.children}
+        </Match>
+        <Match when={local.component === 'input'}>
+          <Input id={local.name} name={local.name} {...fieldProps()} />
+        </Match>
+        <Match when={local.component === 'select'}>
+          <Select id={local.name} name={local.name} {...fieldProps()} />
+        </Match>
+        <Match when={true}>
+          <div class="text-red-500 text-sm">Unsupported component type: {local.component}</div>
+        </Match>
+      </Switch>
+
+      {/* Description text */}
+      <Show when={local.description && !shouldShowError()}>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{local.description}</p>
+      </Show>
+
+      {/* Error message with icon */}
+      <Show when={shouldShowError()}>
+        <p class="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center">
+          <svg
+            class="h-4 w-4 mr-1 flex-shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          {controller.error()}
+        </p>
+      </Show>
+
+      {/* Character count for maxLength validation */}
+      <Show
+        when={maxLengthRule() && ['text', 'textarea', 'email', 'password'].includes(others.type)}
+      >
+        {(() => {
+          const rule = maxLengthRule();
+          const currentLength = String(controller.value()).length;
+          const maxLength = rule.value;
+          const isNearLimit = currentLength > maxLength * 0.8;
+          const isOverLimit = currentLength > maxLength;
+
+          return (
+            <p
+              class={`mt-1 text-xs text-right ${
+                isOverLimit
+                  ? 'text-red-600 dark:text-red-400'
+                  : isNearLimit
+                    ? 'text-orange-600 dark:text-orange-400'
+                    : 'text-gray-500 dark:text-gray-400'
+              }`}
             >
-              {local.label}
-              {local.required && <span class="text-red-500 ml-1">*</span>}
-            </label>
-          )}
-
-          {resolvedChildren()}
-
-          {local.hint && !hasError() && (
-            <p id={`${local.name}-hint`} class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {local.hint}
+              {currentLength}/{maxLength}
             </p>
-          )}
-
-          {hasError() && (
-            <p id={`${local.name}-error`} class="mt-1 text-sm text-red-600 dark:text-red-400">
-              {getErrorMessage()}
-            </p>
-          )}
-        </div>
-      }
-    >
-      <div class={`mb-4 ${local.class ?? ''}`} {...others}>
-        <div class="flex items-start">
-          <div class="flex items-center h-5">{resolvedChildren()}</div>
-
-          {local.label && (
-            <div class="ml-3 text-sm">
-              <label
-                for={`field-${local.name}`}
-                class="font-medium text-gray-700 dark:text-gray-300"
-              >
-                {local.label}
-                {local.required && <span class="text-red-500 ml-1">*</span>}
-              </label>
-            </div>
-          )}
-        </div>
-
-        {local.hint && !hasError() && (
-          <p id={`${local.name}-hint`} class="mt-1 ml-7 text-sm text-gray-500 dark:text-gray-400">
-            {local.hint}
-          </p>
-        )}
-
-        {hasError() && (
-          <p id={`${local.name}-error`} class="mt-1 ml-7 text-sm text-red-600 dark:text-red-400">
-            {getErrorMessage()}
-          </p>
-        )}
-      </div>
-    </Show>
+          );
+        })()}
+      </Show>
+    </div>
   );
 }
+
+/**
+ * Enhanced Input component that integrates with Form
+ * @param {Object} props - Component properties
+ */
+export function FormInput(props) {
+  return <FormField {...props} component="input" />;
+}
+
+/**
+ * Enhanced Select component that integrates with Form
+ * @param {Object} props - Component properties
+ */
+export function FormSelect(props) {
+  return <FormField {...props} component="select" />;
+}
+
+/**
+ * Form submit button component
+ * @param {Object} props - Component properties
+ */
+export function FormSubmitButton(props) {
+  const merged = mergeProps(
+    {
+      variant: Button.VARIANTS.PRIMARY,
+      size: Button.SIZES.MD,
+      loadingText: 'Submitting...',
+    },
+    props
+  );
+
+  const [local, others] = splitProps(merged, ['children', 'loadingText']);
+  const form = useForm();
+
+  return (
+    <Button
+      type="submit"
+      variant={merged.variant}
+      size={merged.size}
+      loading={form.isSubmitting()}
+      disabled={!form.isValid() || form.isSubmitting()}
+      {...others}
+    >
+      {form.isSubmitting() && local.loadingText ? local.loadingText : local.children}
+    </Button>
+  );
+}
+
+/**
+ * Form reset button component
+ * @param {Object} props - Component properties
+ */
+export function FormResetButton(props) {
+  const merged = mergeProps(
+    {
+      variant: Button.VARIANTS.SECONDARY,
+      size: Button.SIZES.MD,
+    },
+    props
+  );
+
+  const [local, others] = splitProps(merged, ['children']);
+  const form = useForm();
+
+  return (
+    <Button
+      type="button"
+      variant={merged.variant}
+      size={merged.size}
+      onClick={form.reset}
+      disabled={form.isSubmitting() || !form.isDirty()}
+      {...others}
+    >
+      {local.children || 'Reset'}
+    </Button>
+  );
+}
+
+/**
+ * Main Form component with validation and submission logic
+ * @param {Object} props - Component properties
+ */
+export function Form(props) {
+  const merged = mergeProps(
+    {
+      size: SIZES.MD,
+      variant: VARIANTS.DEFAULT,
+      noValidate: true,
+    },
+    props
+  );
+
+  const [local, others] = splitProps(merged, [
+    'children',
+    'class',
+    'size',
+    'variant',
+    'formStore',
+    'onSubmit',
+    'initialValues',
+    'validationRules',
+  ]);
+
+  // Create form store if not provided
+  const formStore = untrack(
+    () => local.formStore || createFormStore(local.initialValues, local.validationRules)
+  );
+
+  const formClasses = createMemo(() => {
+    const base = ['form'];
+
+    const sizes = {
+      [SIZES.SM]: ['space-y-3'],
+      [SIZES.MD]: ['space-y-4'],
+      [SIZES.LG]: ['space-y-6'],
+    };
+
+    const variants = {
+      [VARIANTS.DEFAULT]: [],
+      [VARIANTS.COMPACT]: ['space-y-2'],
+      [VARIANTS.CARD]: [
+        'bg-white',
+        'dark:bg-gray-900',
+        'p-6',
+        'rounded-lg',
+        'border',
+        'border-gray-200',
+        'dark:border-gray-700',
+        'shadow-sm',
+      ],
+    };
+
+    return [...base, ...sizes[local.size], ...variants[local.variant], local.class]
+      .filter(Boolean)
+      .join(' ');
+  });
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    formStore.setIsSubmitting(true);
+    formStore.setSubmitCount((count) => count + 1);
+
+    try {
+      const isValid = formStore.validateForm();
+
+      if (isValid && local.onSubmit) {
+        await local.onSubmit(formStore.values(), formStore);
+      }
+    } catch (error) {
+      console.error('Form submission error:', error);
+    } finally {
+      formStore.setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <FormContext.Provider value={formStore}>
+      <form
+        class={formClasses()}
+        onSubmit={handleSubmit}
+        noValidate={merged.noValidate}
+        {...others}
+      >
+        {local.children}
+      </form>
+    </FormContext.Provider>
+  );
+}
+
+// Export constants for external use
+Form.SIZES = SIZES;
+Form.VARIANTS = VARIANTS;
+Form.VALIDATION_TYPES = VALIDATION_TYPES;
+Form.Field = FormField;
+Form.Input = FormInput;
+Form.Select = FormSelect;
+Form.SubmitButton = FormSubmitButton;
+Form.ResetButton = FormResetButton;
+Form.useForm = useForm;
+Form.createFormStore = createFormStore;
