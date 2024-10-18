@@ -13,12 +13,12 @@ use common::mock_app::MockApp;
 #[tokio::test]
 async fn test_device_setting_create() {
     let app = MockApp::new().await.with_device_handle();
-    let group = create_test_group(app.storage.clone(), "Device Setting Create Group").await;
+    let group = create_test_group(app.storage.clone(), "Device Setting Test Group").await;
     create_test_user_group(app.storage.clone(), app.admin.id, group.id, true).await;
     let region = create_test_region(
         app.storage.clone(),
         group.id,
-        "Device Setting Create Test",
+        "Device Setting Test Region",
         500,
         22.0,
         45.0,
@@ -26,14 +26,33 @@ async fn test_device_setting_create() {
     )
     .await;
 
-    let device = create_test_device(
-        app.storage.clone(),
-        region.id,
-        "Test Device for Create",
-        &DeviceType::Window,
-        json!({"position": 50}),
-    )
-    .await;
+    let create_device_request = Request::builder()
+        .uri(&format!("/api/regions/{}/devices", region.id))
+        .method(Method::POST)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", app.token))
+        .body(Body::from(
+            serde_json::to_string(&CreateDeviceRequest {
+                name: "API Test Device for Settings".to_string(),
+                device_type: DeviceType::Window,
+                location: json!("Living Room"),
+                region_id: region.id,
+            })
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let create_response = app
+        .router
+        .clone()
+        .oneshot(create_device_request)
+        .await
+        .unwrap();
+    let create_body = axum::body::to_bytes(create_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let created_device: serde_json::Value = serde_json::from_slice(&create_body).unwrap();
+    let device_id = created_device["id"].as_i64().unwrap() as i32;
 
     let now = OffsetDateTime::now_utc();
     let tomorrow = now + time::Duration::days(1);
@@ -43,19 +62,40 @@ async fn test_device_setting_create() {
         "auto_adjust": true
     });
 
-    let created_setting = create_test_device_setting(
-        app.storage.clone(),
-        device.id,
-        window_setting.clone(),
-        now,
-        tomorrow,
-    )
-    .await;
+    let create_setting_request = Request::builder()
+        .uri(&format!("/api/devices/{}/settings", device_id))
+        .method(Method::POST)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", app.token))
+        .body(Body::from(
+            serde_json::to_string(&CreateSettingRequest {
+                target_id: device_id,
+                data: window_setting,
+                start_time: now,
+                end_time: tomorrow,
+            })
+            .unwrap(),
+        ))
+        .unwrap();
 
-    assert_eq!(created_setting.device_id, device.id);
-    assert_eq!(created_setting.setting["position_range"][0], 0);
-    assert_eq!(created_setting.setting["position_range"][1], 100);
-    assert_eq!(created_setting.setting["auto_adjust"], true);
+    let create_setting_response = app
+        .router
+        .clone()
+        .oneshot(create_setting_request)
+        .await
+        .unwrap();
+
+    assert_eq!(create_setting_response.status(), StatusCode::OK);
+
+    let create_setting_body = axum::body::to_bytes(create_setting_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let created_setting: serde_json::Value = serde_json::from_slice(&create_setting_body).unwrap();
+
+    assert_eq!(created_setting["target_id"], device_id);
+    assert_eq!(created_setting["data"]["position_range"][0], 0);
+    assert_eq!(created_setting["data"]["position_range"][1], 100);
+    assert_eq!(created_setting["data"]["auto_adjust"], true);
 }
 
 #[tokio::test]
@@ -346,84 +386,6 @@ async fn test_device_setting_delete() {
     let verify_response = app.router.clone().oneshot(verify_request).await.unwrap();
 
     assert_eq!(verify_response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_device_setting_api_create() {
-    let app = MockApp::new().await.with_device_handle();
-    let group = create_test_group(app.storage.clone(), "Device Setting API Test Group").await;
-    create_test_user_group(app.storage.clone(), app.admin.id, group.id, true).await;
-    let region = create_test_region(
-        app.storage.clone(),
-        group.id,
-        "Device Setting API Test Region",
-        500,
-        22.0,
-        45.0,
-        false,
-    )
-    .await;
-
-    let create_device_request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
-        .method(Method::POST)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", app.token))
-        .body(Body::from(
-            serde_json::to_string(&CreateDeviceRequest {
-                name: "API Test Device for Settings".to_string(),
-                device_type: DeviceType::Window,
-                location: json!("Living Room"),
-                region_id: region.id,
-            })
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let create_response = app
-        .router
-        .clone()
-        .oneshot(create_device_request)
-        .await
-        .unwrap();
-    let create_body = axum::body::to_bytes(create_response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let created_device: serde_json::Value = serde_json::from_slice(&create_body).unwrap();
-    let device_id = created_device["id"].as_i64().unwrap() as i32;
-
-    let now = OffsetDateTime::now_utc();
-    let tomorrow = now + time::Duration::days(1);
-
-    let window_setting = json!({
-        "position_range": [0, 100],
-        "auto_adjust": true
-    });
-
-    let create_setting_request = Request::builder()
-        .uri(&format!("/api/devices/{}/settings", device_id))
-        .method(Method::POST)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", app.token))
-        .body(Body::from(
-            serde_json::to_string(&CreateSettingRequest {
-                target_id: device_id,
-                data: window_setting,
-                start_time: now,
-                end_time: tomorrow,
-            })
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let create_setting_response = app
-        .router
-        .clone()
-        .oneshot(create_setting_request)
-        .await
-        .unwrap();
-
-    assert_eq!(create_setting_response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
