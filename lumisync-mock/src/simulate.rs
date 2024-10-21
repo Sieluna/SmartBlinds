@@ -1,6 +1,7 @@
+use std::f64::consts;
+
 use rand::Rng;
 use rand_distr::{Distribution, LogNormal, Normal};
-use std::f64::consts;
 
 // Environmental constants (hPa, °C, %, lux)
 const STANDARD_PRESSURE: f64 = 1013.25;

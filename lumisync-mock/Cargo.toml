@@ -9,8 +9,8 @@ rand_distr = "0.5"
 rumqttd = { git = "https://github.com/bytebeamio/rumqtt", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-time = { workspace = true, features = ["serde"] }
-tokio = { workspace = true, features = ["full"] }
+time = { workspace = true, features = ["default", "serde"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

@@ -8,10 +8,24 @@ name = "lumisync_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
+async-trait = "0.1"
+reqwest = { version = "0.12", features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+time = { workspace = true, features = ["default", "serde"] }
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "time", "sync"] }
+
+[target.'cfg(target_os = "windows")'.dependencies.windows]
+version = "0.61"
+features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_NetworkManagement_WiFi",
+    "Win32_System_Threading",
+    "Win32_Security"
+]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

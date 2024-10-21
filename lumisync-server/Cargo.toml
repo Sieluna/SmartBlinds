@@ -21,9 +21,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time"] }
 thiserror = "1"
-time = { workspace = true, features = ["serde"] }
-tokio = { workspace = true, features = ["full"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
+time = { workspace = true, features = ["default", "serde"] }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
+tokio-stream = "0.1"
 toml = { workspace = true, features = ["parse"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }

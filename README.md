@@ -76,6 +76,60 @@ Follow these steps to assemble the sensor and blinds correctly.
 
    - Assemble conductive devices to connect blinds or curtains.
 
+```mermaid
+---
+config:
+  layout: elk
+  look: handDrawn
+---
+flowchart LR
+    subgraph VCC5["+5 V USB"]
+        VCC5_1(("+5 V"))
+    end
+    subgraph GND["Ground"]
+        GND_1(("GND"))
+    end
+    subgraph MCU["ESP32"]
+        direction TB
+            POW("ss")
+            GPIO25("GPIO25")
+            GPIO26("GPIO26")
+            GPIO32("GPIO32")
+            GPIO33("GPIO33")
+            MCU_GND(("GND"))
+    end
+    subgraph USBTTL["HW-597  (CH340)"]
+        direction TB
+            CH_IN_5V["+5 V IN"]
+            CH_OUT_5V("+5 V OUT")
+            CH_GND("GND")
+    end
+    subgraph DRIVER["ULN2003 + 28BYJ-48"]
+        direction TB
+            IN1("IN1")
+            IN2("IN2")
+            IN3("IN3")
+            IN4("IN4")
+            A("PIN A")
+            B("PIN B")
+            C("PIN C")
+            D("PIN D")
+            ULN_VCC("+5 V")
+            ULN_GND("GND")
+    end
+    GPIO25 -- IN1 --> IN1
+    GPIO26 -- IN2 --> IN2
+    GPIO32 -- IN3 --> IN3
+    GPIO33 -- IN4 --> IN4
+    IN1 -- |OUT1| --> A
+    IN2 -- |OUT2| --> B
+    IN3 -- |OUT3| --> C
+    IN4 -- |OUT4| --> D
+    VCC5_1 --- CH_IN_5V & POW
+    GND_1 --- MCU_GND & CH_GND & ULN_GND
+    CH_OUT_5V --- ULN_VCC
+```
+
 > [!NOTE]  
 > If using ready-made sensor provider can skip the `step 2`
 
