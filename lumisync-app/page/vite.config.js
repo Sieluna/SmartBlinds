@@ -1,13 +1,17 @@
 import process from 'node:process';
 import { defineConfig, loadEnv } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
+import tailwindcss from '@tailwindcss/vite';
 
 /** @type {import('vite').UserConfig} */
 export default defineConfig(async ({ mode }) => {
   const env = { ...process.env, ...loadEnv(mode, process.cwd()) };
 
   return {
-    plugins: [solidPlugin()],
+    plugins: [
+      tailwindcss(),
+      solidPlugin(),
+    ],
     clearScreen: false,
     define: {
       __APP_ENV__: JSON.stringify(env.APP_ENV ?? 'development'),

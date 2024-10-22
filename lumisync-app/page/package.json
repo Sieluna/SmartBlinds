@@ -16,12 +16,11 @@
     "solid-js": "^1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "latest",
     "@tauri-apps/cli": "latest",
-    "autoprefixer": "latest",
     "eslint": "latest",
     "eslint-plugin-solid": "latest",
     "global": "latest",
-    "postcss": "latest",
     "tailwindcss": "latest",
     "vite": "latest",
     "vite-plugin-solid": "latest"
