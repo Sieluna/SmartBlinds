@@ -19,10 +19,10 @@ pub struct Ssid(pub String);
 #[derive(Debug, Default, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Bssid(pub [u8; 6]);
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Channel(pub u16);
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Band {
     GHz2,
     GHz5,
@@ -31,7 +31,7 @@ pub enum Band {
     Unknown,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Security {
     Open,
     Wep,
@@ -81,6 +81,7 @@ pub struct Credentials {
     pub ssid: Ssid,
     pub security: Security,
     pub passphrase: Option<String>,
+    #[serde(with = "time::serde::iso8601")]
     pub created_at: OffsetDateTime,
     pub auto_connect: bool,
     pub hidden: bool,
@@ -98,7 +99,7 @@ pub struct ConnectionInfo {
     pub since: Option<OffsetDateTime>,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ConnState {
     Connected,
     #[default]
@@ -129,8 +130,21 @@ pub struct Device {
 
 impl Device {
     pub async fn send_wifi_config(&self, router_credentials: &Credentials) -> Result<()> {
+        let base_url = if self.endpoint.ends_with('/') {
+            self.endpoint.trim_end_matches('/').to_string()
+        } else {
+            self.endpoint.clone()
+        };
+
+        let url = if base_url.contains("://") {
+            format!("{}/config", base_url)
+        } else {
+            format!("http://{}/config", base_url)
+        };
+
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(10))
             .build()
             .map_err(|e| WifiError::Backend(format!("Failed to create HTTP client: {}", e)))?;
 
@@ -140,22 +154,45 @@ impl Device {
             "password": password
         });
 
-        let response = client
-            .post(format!("{}/config", self.endpoint))
-            .json(&wifi_config)
-            .send()
-            .await
-            .map_err(|e| WifiError::Backend(format!("Failed to send config to device: {}", e)))?;
+        const MAX_RETRIES: usize = 3;
+        let mut last_error = None;
 
-        if !response.status().is_success() {
-            return Err(WifiError::Backend(format!(
-                "Device returned error: {} - {}",
-                response.status(),
-                response.text().await.unwrap_or_default()
-            )));
+        for attempt in 1..=MAX_RETRIES {
+            match client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .json(&wifi_config)
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return Ok(());
+                    } else {
+                        let status = response.status();
+                        let error_text = response.text().await.unwrap_or_default();
+                        last_error = Some(WifiError::Backend(format!(
+                            "Device returned error: {} - {}",
+                            status, error_text
+                        )));
+                    }
+                }
+                Err(e) => {
+                    last_error = Some(WifiError::Backend(format!(
+                        "Failed to send config to device (attempt {}): {}",
+                        attempt, e
+                    )));
+
+                    if attempt < MAX_RETRIES {
+                        tokio::time::sleep(Duration::from_secs(attempt as u64 * 2)).await;
+                    }
+                }
+            }
         }
 
-        Ok(())
+        Err(last_error
+            .unwrap_or_else(|| WifiError::Backend("All HTTP attempts failed".to_string())))
     }
 }
 
@@ -213,20 +250,23 @@ impl WifiState {
 
         // Connect to the device AP
         self.backend.connect(&device.credentials).await?;
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
-        tokio::time::sleep(Duration::from_secs(3)).await;
-
-        // Send router WiFi config to device and query data from device
-        device.send_wifi_config(router_credentials).await?;
+        // Send router WiFi config to device
+        if let Err(e) = device.send_wifi_config(router_credentials).await {
+            let _ = self.backend.disconnect().await;
+            let _ = self.restore_original_connection(original_connection).await;
+            return Err(e);
+        }
 
         // Disconnect from device AP
         self.backend.disconnect().await?;
 
-        // Restore original connection if there was one
+        // Restore original connection
         self.restore_original_connection(original_connection)
             .await?;
 
-        // Update cache with current connection after restoration
+        // Update cache
         self.cache.current_connection = self.backend.current_connection().await?;
 
         // TODO: Upload device info to cloud
@@ -241,7 +281,7 @@ impl WifiState {
         if let Some(conn_info) = original_connection {
             if let (Some(original_ssid), ConnState::Connected) = (&conn_info.ssid, &conn_info.state)
             {
-                // First try to find credentials in cache
+                // Try to find credentials in cache first
                 let original_creds = self
                     .cache
                     .wifis
@@ -249,11 +289,11 @@ impl WifiState {
                     .and_then(|entry| entry.credential.as_ref());
 
                 if let Some(creds) = original_creds {
-                    // Found in cache, use it directly
                     self.backend.connect(creds).await?;
                 } else {
-                    // Not in cache, fallback to backend query
+                    // Fallback to backend query
                     let saved_profiles = self.backend.get_profiles().await?;
+
                     if let Some(original_creds) =
                         saved_profiles.iter().find(|p| p.ssid == *original_ssid)
                     {
@@ -267,6 +307,7 @@ impl WifiState {
                 }
             }
         }
+
         Ok(())
     }
 }

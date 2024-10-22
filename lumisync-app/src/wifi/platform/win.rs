@@ -1,35 +1,39 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::ffi::c_void;
 use std::ptr;
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use time::OffsetDateTime;
 use windows::Win32::Foundation::*;
 use windows::Win32::NetworkManagement::WiFi::*;
-use windows::core::{GUID, PCWSTR};
+use windows::Win32::Security::*;
+use windows::Win32::System::Threading::*;
+use windows::core::{GUID, PCWSTR, PWSTR};
 
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum WifiEvent {
     ScanComplete,
-    ScanFailed,
-    Connected,
+    ScanFail,
+    ConnectionAttemptFail,
+    ConnectionComplete,
+    ConnectionStart,
     Disconnected,
-    ConnectionFailed,
+    Disconnecting,
+    Other(u32),
 }
 
 struct NotificationManager {
     handle: HANDLE,
     context_ptr: *mut c_void,
+    event_queue: Arc<Mutex<VecDeque<WifiEvent>>>,
 }
 
 impl NotificationManager {
-    fn new(handle: HANDLE) -> Result<(Self, Receiver<WifiEvent>)> {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let sender_arc = Arc::new(Mutex::new(Some(sender)));
+    fn new(handle: HANDLE) -> Result<Self> {
+        let event_queue = Arc::new(Mutex::new(VecDeque::new()));
 
         unsafe extern "system" fn notification_callback(
             data: *mut L2_NOTIFICATION_DATA,
@@ -40,43 +44,32 @@ impl NotificationManager {
             }
 
             let notification = unsafe { &*data };
-            let sender_ptr = context as *const Arc<Mutex<Option<Sender<WifiEvent>>>>;
-            let sender_arc = unsafe { &*sender_ptr };
+            let queue_ptr = context as *const Arc<Mutex<VecDeque<WifiEvent>>>;
+            let queue_arc = unsafe { &*queue_ptr };
 
             if notification.NotificationSource == WLAN_NOTIFICATION_SOURCE_ACM {
-                if let Ok(mut sender_guard) = sender_arc.lock() {
-                    if let Some(ref sender) = *sender_guard {
-                        let code = WLAN_NOTIFICATION_ACM(notification.NotificationCode as i32);
-                        #[allow(non_upper_case_globals)]
-                        let event = match code {
-                            wlan_notification_acm_scan_complete => Some(WifiEvent::ScanComplete),
-                            wlan_notification_acm_scan_fail => Some(WifiEvent::ScanFailed),
-                            wlan_notification_acm_connection_complete => Some(WifiEvent::Connected),
-                            wlan_notification_acm_disconnected => Some(WifiEvent::Disconnected),
-                            wlan_notification_acm_connection_attempt_fail => {
-                                Some(WifiEvent::ConnectionFailed)
-                            }
-                            _ => None,
-                        };
+                if let Ok(mut queue) = queue_arc.lock() {
+                    let code = WLAN_NOTIFICATION_ACM(notification.NotificationCode as i32);
+                    let event = match code {
+                        WLAN_NOTIFICATION_ACM(7) => WifiEvent::ScanComplete,
+                        WLAN_NOTIFICATION_ACM(8) => WifiEvent::ScanFail,
+                        WLAN_NOTIFICATION_ACM(11) => WifiEvent::ConnectionAttemptFail,
+                        WLAN_NOTIFICATION_ACM(10) => WifiEvent::ConnectionComplete,
+                        WLAN_NOTIFICATION_ACM(9) => WifiEvent::ConnectionStart,
+                        WLAN_NOTIFICATION_ACM(21) => WifiEvent::Disconnected,
+                        WLAN_NOTIFICATION_ACM(20) => WifiEvent::Disconnecting,
+                        _ => WifiEvent::Other(notification.NotificationCode),
+                    };
+                    queue.push_back(event);
 
-                        if let Some(event) = event {
-                            let is_terminal = matches!(
-                                event,
-                                WifiEvent::ScanComplete
-                                    | WifiEvent::Connected
-                                    | WifiEvent::Disconnected
-                            );
-                            let _ = sender.send(event);
-                            if is_terminal {
-                                *sender_guard = None;
-                            }
-                        }
+                    if queue.len() > 100 {
+                        queue.pop_front();
                     }
                 }
             }
         }
 
-        let context_ptr = Box::into_raw(Box::new(sender_arc)) as *mut c_void;
+        let context_ptr = Box::into_raw(Box::new(event_queue.clone())) as *mut c_void;
         let mut prev_source = 0u32;
         let result = unsafe {
             WlanRegisterNotification(
@@ -92,7 +85,7 @@ impl NotificationManager {
 
         if result != ERROR_SUCCESS.0 {
             unsafe {
-                let _ = Box::from_raw(context_ptr as *mut Arc<Mutex<Option<Sender<WifiEvent>>>>);
+                let _ = Box::from_raw(context_ptr as *mut Arc<Mutex<VecDeque<WifiEvent>>>);
             }
             return Err(WifiError::Backend(format!(
                 "Failed to register notification: {}",
@@ -100,45 +93,39 @@ impl NotificationManager {
             )));
         }
 
-        Ok((
-            Self {
-                handle,
-                context_ptr,
-            },
-            receiver,
-        ))
+        Ok(Self {
+            handle,
+            context_ptr,
+            event_queue,
+        })
     }
 
-    fn wait_for_event(
-        &self,
-        receiver: Receiver<WifiEvent>,
-        expected: &[WifiEvent],
-        timeout: Duration,
-    ) -> Result<WifiEvent> {
+    fn wait_for_event(&self, expected: &[WifiEvent], timeout: Duration) -> Result<WifiEvent> {
         let start = Instant::now();
-        let expected = expected
+        let expected_discriminants = expected
             .iter()
             .map(std::mem::discriminant)
             .collect::<HashSet<_>>();
 
         while start.elapsed() < timeout {
-            match receiver.recv_timeout(Duration::from_millis(50)) {
-                Ok(event) => {
-                    if expected.contains(&std::mem::discriminant(&event)) {
-                        return Ok(event);
-                    }
-                    if let WifiEvent::ScanFailed | WifiEvent::ConnectionFailed = event {
-                        return Err(WifiError::Backend(format!("Operation failed: {event:?}")));
+            if let Ok(mut queue) = self.event_queue.lock() {
+                let mut found_index = None;
+                for (index, event) in queue.iter().enumerate() {
+                    if expected_discriminants.contains(&std::mem::discriminant(event)) {
+                        found_index = Some(index);
+                        break;
                     }
                 }
-                Err(RecvTimeoutError::Timeout) => continue,
-                Err(RecvTimeoutError::Disconnected) => {
-                    return Err(WifiError::Backend("Channel disconnected".into()));
+
+                if let Some(index) = found_index {
+                    return Ok(queue.remove(index).unwrap());
                 }
             }
+            std::thread::sleep(Duration::from_millis(50));
         }
+
         Err(WifiError::Backend(format!(
-            "Timeout waiting for {expected:?}"
+            "Timeout waiting for expected events: {expected:?}"
         )))
     }
 }
@@ -157,8 +144,7 @@ impl Drop for NotificationManager {
             );
 
             if !self.context_ptr.is_null() {
-                let _ =
-                    Box::from_raw(self.context_ptr as *mut Arc<Mutex<Option<Sender<WifiEvent>>>>);
+                let _ = Box::from_raw(self.context_ptr as *mut Arc<Mutex<VecDeque<WifiEvent>>>);
                 self.context_ptr = ptr::null_mut();
             }
         }
@@ -328,6 +314,45 @@ impl Backend {
         )
     }
 
+    fn extract_credentials_from_xml(&self, xml: &str) -> (Security, Option<String>) {
+        let security = if xml.contains("<authentication>open</authentication>") {
+            Security::Open
+        } else if xml.contains("<authentication>WEP</authentication>") {
+            Security::Wep
+        } else if xml.contains("<authentication>WPA</authentication>") {
+            Security::WpaPersonal
+        } else if xml.contains("<authentication>WPA2PSK</authentication>") {
+            Security::Wpa2Personal
+        } else if xml.contains("<authentication>WPA3SAE</authentication>") {
+            Security::Wpa3Personal
+        } else if xml.contains("<authentication>WPA2</authentication>") {
+            Security::Wpa2Enterprise
+        } else if xml.contains("<authentication>WPA3</authentication>") {
+            Security::Wpa3Enterprise
+        } else {
+            Security::Unknown
+        };
+
+        let passphrase = if let Some(start) = xml.find("<keyMaterial>") {
+            if let Some(end) = xml[start..].find("</keyMaterial>") {
+                let key_start = start + "<keyMaterial>".len();
+                let key_end = start + end;
+                let password = xml[key_start..key_end].trim();
+                if password.is_empty() {
+                    None
+                } else {
+                    Some(password.to_string())
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        (security, passphrase)
+    }
+
     fn current_connection_sync(&mut self) -> Result<Option<ConnectionInfo>> {
         let (handle, interface) = self.ensure_initialized()?;
 
@@ -420,6 +445,31 @@ impl Backend {
 
         Ok(Some(connection_info))
     }
+
+    fn has_admin_privileges(&self) -> bool {
+        unsafe {
+            let mut token: HANDLE = HANDLE::default();
+
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+                return false;
+            }
+
+            let mut elevation: TOKEN_ELEVATION = std::mem::zeroed();
+            let mut return_length = 0u32;
+
+            let result = GetTokenInformation(
+                token,
+                TokenElevation,
+                Some(&mut elevation as *mut _ as *mut c_void),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut return_length,
+            );
+
+            let _ = CloseHandle(token);
+
+            result.is_ok() && elevation.TokenIsElevated != 0
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -431,18 +481,14 @@ impl WifiBackend for Backend {
             let mut backend = backend;
             let (handle, interface) = backend.ensure_initialized()?;
 
-            let (notification_mgr, receiver) = NotificationManager::new(handle)?;
+            let notification_mgr = NotificationManager::new(handle)?;
 
             let result = unsafe { WlanScan(handle, &interface, None, None, None) };
             if result != ERROR_SUCCESS.0 {
                 return Err(WifiError::Backend(format!("Scan failed: {}", result)));
             }
 
-            notification_mgr.wait_for_event(
-                receiver,
-                &[WifiEvent::ScanComplete],
-                Duration::from_secs(10),
-            )?;
+            notification_mgr.wait_for_event(&[WifiEvent::ScanComplete], Duration::from_secs(10))?;
 
             let mut bss_list: *mut WLAN_BSS_LIST = ptr::null_mut();
             let result = unsafe {
@@ -540,7 +586,7 @@ impl WifiBackend for Backend {
             let mut backend = backend;
             let (handle, interface) = backend.ensure_initialized()?;
 
-            let (notification_mgr, receiver) = NotificationManager::new(handle)?;
+            let notification_mgr = NotificationManager::new(handle)?;
 
             let profile_xml = backend.create_profile_xml(&creds);
             let profile_xml_wide = backend.to_wide(&profile_xml);
@@ -566,6 +612,8 @@ impl WifiBackend for Backend {
                 )));
             }
 
+            std::thread::sleep(Duration::from_secs(3));
+
             let profile_name_wide = backend.to_wide(&creds.ssid.0);
             let connection_params = WLAN_CONNECTION_PARAMETERS {
                 wlanConnectionMode: wlan_connection_mode_profile,
@@ -581,11 +629,8 @@ impl WifiBackend for Backend {
                 return Err(WifiError::Connect(format!("Connection failed: {}", result)));
             }
 
-            notification_mgr.wait_for_event(
-                receiver,
-                &[WifiEvent::Connected],
-                Duration::from_secs(20),
-            )?;
+            notification_mgr
+                .wait_for_event(&[WifiEvent::ConnectionComplete], Duration::from_secs(60))?;
 
             backend.current_connection_sync()?.ok_or_else(|| {
                 WifiError::Connect("Connected but unable to get connection info".to_string())
@@ -602,18 +647,14 @@ impl WifiBackend for Backend {
             let mut backend = backend;
             let (handle, interface) = backend.ensure_initialized()?;
 
-            let (notification_mgr, receiver) = NotificationManager::new(handle)?;
+            let notification_mgr = NotificationManager::new(handle)?;
 
             let result = unsafe { WlanDisconnect(handle, &interface, None) };
             if result != ERROR_SUCCESS.0 {
                 return Err(WifiError::Backend(format!("Disconnect failed: {}", result)));
             }
 
-            notification_mgr.wait_for_event(
-                receiver,
-                &[WifiEvent::Disconnected],
-                Duration::from_secs(5),
-            )?;
+            notification_mgr.wait_for_event(&[WifiEvent::Disconnected], Duration::from_secs(5))?;
             Ok(())
         })
         .await
@@ -636,6 +677,7 @@ impl WifiBackend for Backend {
         tokio::task::spawn_blocking(move || {
             let mut backend = backend;
             let (handle, interface) = backend.ensure_initialized()?;
+            let has_admin = backend.has_admin_privileges();
 
             let mut profile_list: *mut WLAN_PROFILE_INFO_LIST = ptr::null_mut();
             let result = unsafe { WlanGetProfileList(handle, &interface, None, &mut profile_list) };
@@ -657,28 +699,67 @@ impl WifiBackend for Backend {
                 let profile_entries =
                     std::slice::from_raw_parts((*profile_list).ProfileInfo.as_ptr(), profile_count);
 
-                let credentials: Vec<_> = profile_entries
-                    .iter()
-                    .map(|profile| {
-                        let profile_name = {
-                            let wide_chars = &profile.strProfileName;
-                            let len = wide_chars
-                                .iter()
-                                .position(|&c| c == 0)
-                                .unwrap_or(wide_chars.len());
-                            String::from_utf16_lossy(&wide_chars[..len])
+                let mut credentials = Vec::new();
+
+                for profile in profile_entries {
+                    let profile_name = {
+                        let wide_chars = &profile.strProfileName;
+                        let len = wide_chars
+                            .iter()
+                            .position(|&c| c == 0)
+                            .unwrap_or(wide_chars.len());
+                        String::from_utf16_lossy(&wide_chars[..len])
+                    };
+
+                    let profile_name_wide = backend.to_wide(&profile_name);
+                    let mut profile_xml: PWSTR = PWSTR::null();
+                    let mut flags = if has_admin {
+                        WLAN_PROFILE_GET_PLAINTEXT_KEY
+                    } else {
+                        0u32
+                    };
+
+                    let result = WlanGetProfile(
+                        handle,
+                        &interface,
+                        PCWSTR(profile_name_wide.as_ptr()),
+                        None,
+                        &mut profile_xml,
+                        Some(&mut flags),
+                        None,
+                    );
+
+                    if result == ERROR_SUCCESS.0 && !profile_xml.is_null() {
+                        let xml_string = profile_xml.to_string().unwrap_or_default();
+
+                        let (security, passphrase) = if has_admin {
+                            backend.extract_credentials_from_xml(&xml_string)
+                        } else {
+                            let (security, _) = backend.extract_credentials_from_xml(&xml_string);
+                            (security, None)
                         };
 
-                        Credentials {
+                        credentials.push(Credentials {
+                            ssid: Ssid(profile_name),
+                            security,
+                            passphrase,
+                            created_at: OffsetDateTime::now_utc(),
+                            auto_connect: false,
+                            hidden: false,
+                        });
+
+                        WlanFreeMemory(profile_xml.as_ptr() as *mut c_void);
+                    } else {
+                        credentials.push(Credentials {
                             ssid: Ssid(profile_name),
                             security: Security::Unknown,
                             passphrase: None,
                             created_at: OffsetDateTime::now_utc(),
                             auto_connect: false,
                             hidden: false,
-                        }
-                    })
-                    .collect();
+                        });
+                    }
+                }
 
                 WlanFreeMemory(profile_list as *mut c_void);
                 credentials

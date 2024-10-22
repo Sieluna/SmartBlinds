@@ -33,6 +33,7 @@ export const zh = {
     maxLength: '不能超过 {{length}} 个字符',
     min: '必须至少 {{min}}',
     max: '不能超过 {{max}}',
+    invalidUrl: '请输入有效的URL',
   },
   auth: {
     login: '登录',
@@ -144,36 +145,37 @@ export const zh = {
   },
   wifi: {
     title: 'WiFi设备配置',
-    scanNetworks: '扫描网络',
-    configureDevice: '配置设备',
-    availableNetworks: '可用网络',
+    description: '配置您的智能设备连接到WiFi网络',
+
+    // 网络和状态
+    availableNetworks: '可用WiFi网络',
     currentConnection: '当前连接',
+    connected: '已连接',
+
+    // 操作按钮
     refresh: '刷新',
     scanning: '扫描中...',
-    signal: '信号',
-    security: '安全性',
-    connected: '已连接',
-    select: '选择',
-    selected: '已选择',
-    routerNetwork: '路由器网络',
-    wifiPassword: 'WiFi密码',
-    enterRouterPassword: '输入路由器WiFi密码',
-    deviceAccessPoint: '设备接入点',
-    deviceSetupDescription: '连接到您设备的WiFi热点以进行配置',
-    deviceSSID: '设备SSID',
-    deviceSSIDPlaceholder: '例如：SmartBlinds, ESP32-Setup',
-    devicePassword: '设备密码（可选）',
-    devicePasswordPlaceholder: '设备AP密码（如果有）',
-    configuringDevice: '正在配置设备...',
-    setupInstructions: '设置说明',
-    step1: '将设备设置为配置模式',
-    step2: '连接到设备的WiFi热点',
-    step3: '点击"配置设备"发送路由器凭据',
-    step4: '等待设备连接到路由器',
+    scanningNetworks: '正在扫描网络...',
     scanPrompt: '点击"刷新"扫描WiFi网络',
-    configureSuccess: '设备配置成功！',
-    scanFailed: '扫描失败',
-    registrationFailed: '注册失败',
-    fillAllFields: '请填写所有必填字段',
+    router: 'Router',
+    device: 'Device',
+
+    // 配置相关
+    configuration: '配置',
+    configureDevices: '配置设备',
+    selectedDevicesCount: '已选择{{count}}个设备',
+    enterRouterPassword: '输入WiFi密码',
+    devicePassword: '设备密码',
+    deviceEndpoint: '设备URL',
+
+    // 消息提示
+    success: {
+      devicesConfigured: '{{count}}个设备配置成功！',
+    },
+    errors: {
+      scanFailed: 'WiFi网络扫描失败',
+      noRouterSelected: '请先选择路由器',
+      configurationFailed: '配置失败：{{error}}',
+    },
   },
 };

@@ -33,6 +33,7 @@ export const en = {
     maxLength: 'Cannot exceed {{length}} characters',
     min: 'Must be at least {{min}}',
     max: 'Cannot exceed {{max}}',
+    invalidUrl: 'Please enter a valid URL',
   },
   auth: {
     login: 'Login',
@@ -144,36 +145,37 @@ export const en = {
   },
   wifi: {
     title: 'WiFi Device Setup',
-    scanNetworks: 'Scan Networks',
-    configureDevice: 'Configure Device',
-    availableNetworks: 'Available Networks',
-    currentConnection: 'Current Connection',
+    description: 'Configure your smart devices to connect to your WiFi network',
+
+    // Networks and status
+    availableNetworks: 'Available WiFi Networks',
+    currentConnection: 'Currently Connected',
+    connected: 'Connected',
+
+    // Action buttons
     refresh: 'Refresh',
     scanning: 'Scanning...',
-    signal: 'Signal',
-    security: 'Security',
-    connected: 'Connected',
-    select: 'Select',
-    selected: 'Selected',
-    routerNetwork: 'Router Network',
-    wifiPassword: 'WiFi Password',
-    enterRouterPassword: 'Enter router WiFi password',
-    deviceAccessPoint: 'Device Access Point',
-    deviceSetupDescription: 'Connect to your device\'s WiFi hotspot to configure it',
-    deviceSSID: 'Device SSID',
-    deviceSSIDPlaceholder: 'e.g., SmartBlinds, ESP32-Setup',
-    devicePassword: 'Device Password (Optional)',
-    devicePasswordPlaceholder: 'Device AP password (if any)',
-    configuringDevice: 'Configuring Device...',
-    setupInstructions: 'Setup Instructions',
-    step1: 'Put your device in setup mode',
-    step2: 'Connect to the device\'s WiFi hotspot',
-    step3: 'Click "Configure Device" to send router credentials',
-    step4: 'Wait for the device to connect to your router',
+    scanningNetworks: 'Scanning networks...',
     scanPrompt: 'Click "Refresh" to scan for WiFi networks',
-    configureSuccess: 'Device configured successfully!',
-    scanFailed: 'Scan failed',
-    registrationFailed: 'Registration failed',
-    fillAllFields: 'Please fill in all required fields',
+    router: 'Router',
+    device: 'Device',
+
+    // Configuration
+    configuration: 'Configuration',
+    configureDevices: 'Configure Devices',
+    selectedDevicesCount: '{{count}} devices selected',
+    enterRouterPassword: 'Enter WiFi password',
+    devicePassword: 'Device password',
+    deviceEndpoint: 'Device URL',
+
+    // Messages
+    success: {
+      devicesConfigured: '{{count}} device(s) configured successfully!',
+    },
+    errors: {
+      scanFailed: 'Failed to scan WiFi networks',
+      noRouterSelected: 'Please select a router first',
+      configurationFailed: 'Configuration failed: {{error}}',
+    },
   },
 };

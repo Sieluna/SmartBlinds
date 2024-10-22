@@ -164,7 +164,8 @@ export function createFormStore(initialValues = {}, validationRules = {}) {
    */
   const setValue = (name, value) => {
     batch(() => {
-      setState('values', name, value);
+      const path = name.split('.');
+      setState('values', ...path, value);
       setState(
         'errors',
         produce((errors) => {
@@ -250,7 +251,14 @@ function createFieldController(name, rules, options) {
   const { validateOnBlur, validateOnChange } = options;
   const form = useForm();
 
-  const value = () => form.values()[name] ?? '';
+  const value = () => {
+    const path = name.split('.');
+    let current = form.values();
+    for (const key of path) {
+      current = current?.[key];
+    }
+    return current ?? '';
+  };
   const error = () => form.errors()[name];
   const touched = () => form.touched()[name];
 

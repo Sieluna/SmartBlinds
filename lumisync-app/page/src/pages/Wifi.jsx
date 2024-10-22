@@ -1,381 +1,369 @@
-import { createSignal, createEffect, onMount, For, Show } from 'solid-js';
+import { createSignal, onMount, For, Show, createMemo, batch } from 'solid-js';
+import { produce } from 'solid-js/store';
 import { invoke } from '@tauri-apps/api/core';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { List } from '../components/ui/List';
+import { Button } from '../components/ui/Button.jsx';
+import { List } from '../components/ui/List.jsx';
+import { Form } from '../components/ui/Form.jsx';
+import { useTranslation } from '../context/LanguageContext.jsx';
 
 export function Wifi() {
+  const { t } = useTranslation();
   const [wifiData, setWifiData] = createSignal(null);
-  const [selectedRouter, setSelectedRouter] = createSignal(null);
-  const [routerPassword, setRouterPassword] = createSignal('');
-  const [deviceCredentials, setDeviceCredentials] = createSignal({ ssid: '', password: '' });
+  const [router, setRouter] = createSignal(null);
+  const [devices, setDevices] = createSignal([]);
   const [isScanning, setIsScanning] = createSignal(false);
-  const [isRegistering, setIsRegistering] = createSignal(false);
-  const [currentView, setCurrentView] = createSignal('scan'); // 'scan' | 'configure'
+  const [showConfig, setShowConfig] = createSignal(false);
 
-  // Scan WiFi networks
-  const scanNetworks = async () => {
+  const formStore = Form.createFormStore({
+    routerPassword: '',
+    deviceConfigs: {},
+  });
+
+  const getSignal = (entry) => {
+    const rssi = entry?.access_points?.[0]?.links?.[0]?.rssi_dbm || -127;
+    return Math.max(0, Math.min(100, ((rssi + 127) / 127) * 100));
+  };
+
+  const isConnected = (entry) => {
+    const current = wifiData()?.current_connection;
+    return current?.state === 'Connected' && entry.ssid === current?.ssid;
+  };
+
+  const needsPassword = () => {
+    const entry = router() || {};
+    return entry.security !== 'Open' && !entry.credential?.passphrase;
+  };
+
+  const hasSelections = () => router() || devices().length > 0;
+
+  const scan = async () => {
     setIsScanning(true);
     try {
-      const result = await invoke('scan_wifis');
-      setWifiData(result);
-    } catch (error) {
-      console.error('Failed to scan WiFi networks:', error);
+      setWifiData(await invoke('scan_wifis'));
+    } catch {
+      alert(t('wifi.errors.scanFailed'));
     } finally {
       setIsScanning(false);
     }
   };
 
-  // Register device with selected router credentials
-  const registerDevice = async () => {
-    if (!selectedRouter() || !routerPassword() || !deviceCredentials().ssid) {
-      alert('Please fill in all required fields');
+  const toggleRouter = (entry) => {
+    const current = router();
+    const isSame = current && current.ssid === entry.ssid;
+
+    batch(() => {
+      setRouter(isSame ? null : entry);
+      if (!isSame) formStore.setValue('routerPassword', '');
+    });
+  };
+
+  const toggleDevice = (entry) => {
+    const ssid = entry.ssid ?? '';
+
+    setDevices((prev) => {
+      const exists = prev.includes(ssid);
+      if (exists) {
+        formStore.setValue('deviceConfigs', produce(configs => {
+          delete configs[ssid];
+        }));
+        return prev.filter((s) => s !== ssid);
+      }
+
+      const currentConfigs = formStore.values().deviceConfigs || {};
+      formStore.setValue('deviceConfigs', {
+        ...currentConfigs,
+        [ssid]: {
+          password: '',
+          endpoint: 'http://192.168.71.1:80',
+        }
+      });
+      return [...prev, ssid];
+    });
+  };
+
+  const handleToggleConfig = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setShowConfig(!showConfig());
+  };
+
+  const handleRemoveDevice = (entry, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleDevice(entry);
+  };
+
+  const configure = async (values) => {
+    const routerEntry = router();
+    if (!routerEntry) {
+      alert(t('wifi.errors.noRouterSelected'));
       return;
     }
 
-    setIsRegistering(true);
     try {
-      const device = {
-        credentials: {
-          ssid: deviceCredentials().ssid,
-          security: 'Wpa2Personal',
-          passphrase: deviceCredentials().password || null,
-          created_at: new Date().toISOString(),
-          auto_connect: false,
-          hidden: false
-        },
-        endpoint: 'http://192.168.4.1:80' // Default ESP32 AP endpoint
-      };
-
       const routerCreds = {
-        ssid: selectedRouter().ssid,
-        security: selectedRouter().security,
-        passphrase: routerPassword(),
+        ssid: routerEntry.ssid,
+        security: routerEntry.security || 'Wpa2Personal',
+        passphrase: needsPassword()
+          ? values.routerPassword
+          : routerEntry.credential?.passphrase || null,
         created_at: new Date().toISOString(),
         auto_connect: true,
-        hidden: false
+        hidden: false,
       };
 
-      await invoke('register_device', {
-        device,
-        routerCredentials: routerCreds
+      const wifis = wifiData()?.wifis || {};
+
+      for (const deviceSsid of devices()) {
+        const deviceEntry = Object.values(wifis).find((entry) => entry.ssid === deviceSsid);
+
+        if (!deviceEntry) continue;
+
+        const config = values.deviceConfigs?.[deviceSsid] || {};
+
+        await invoke('register_device', {
+          device: {
+            credentials: {
+              ssid: deviceEntry.ssid,
+              security: deviceEntry.security || 'Open',
+              passphrase: config.password || null,
+              created_at: new Date().toISOString(),
+              auto_connect: false,
+              hidden: false,
+            },
+            endpoint: config.endpoint || 'http://192.168.71.1:80',
+          },
+          routerCredentials: routerCreds,
+        });
+      }
+
+      alert(t('wifi.success.devicesConfigured', { count: devices().length }));
+      reset();
+    } catch (error) {
+      console.error('Configuration error:', error);
+      alert(t('wifi.errors.configurationFailed', { error: error.toString() }));
+    }
+  };
+
+  const reset = () => {
+    batch(() => {
+      setRouter(null);
+      setDevices([]);
+      setShowConfig(false);
+      formStore.reset();
+    });
+  };
+
+  const networks = createMemo(() => {
+    const data = wifiData();
+    if (!data?.wifis) return [];
+
+    return Object.values(data.wifis)
+      .filter((entry) => entry?.ssid)
+      .map((entry) => {
+        const ssid = entry.ssid ?? '';
+        const signal = Math.round(getSignal(entry));
+        const isRouter = router() && router().ssid === ssid;
+        const isDevice = devices().includes(ssid);
+        const connected = isConnected(entry);
+
+        return {
+          id: ssid,
+          title: (
+            <div class="flex items-center gap-2">
+              <span>{ssid}</span>
+              {connected && (
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                  <div class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse" />
+                  {t('wifi.connected')}
+                </span>
+              )}
+            </div>
+          ),
+          description: `${signal}% • ${entry.security || 'Open'}`,
+          action: (
+            <div class="flex gap-2">
+              <Button
+                size="sm"
+                variant={isRouter ? 'primary' : 'secondary'}
+                onClick={() => toggleRouter(entry)}
+              >
+                {isRouter ? '✓' : t('wifi.router')}
+              </Button>
+              <Button
+                size="sm"
+                variant={isDevice ? 'primary' : 'ghost'}
+                onClick={() => toggleDevice(entry)}
+              >
+                {isDevice ? '✓' : t('wifi.device')}
+              </Button>
+            </div>
+          ),
+        };
       });
-
-      alert('Device registered successfully!');
-      setSelectedRouter(null);
-      setRouterPassword('');
-      setDeviceCredentials({ ssid: '', password: '' });
-      setCurrentView('scan');
-    } catch (error) {
-      alert(`Registration failed: ${error}`);
-    } finally {
-      setIsRegistering(false);
-    }
-  };
-
-  // Get signal strength from access points with safe access
-  const getSignalStrength = (networkEntry) => {
-    // Safety check for the network entry
-    if (!networkEntry) return 0;
-    
-    // Check if this is a flattened entry or has nested network
-    const network = networkEntry.network || networkEntry;
-
-    if (!network) return 0;
-    
-    if (!network.access_points || !Array.isArray(network.access_points) || network.access_points.length === 0)
-      return 0;
-    
-    try {
-      const maxRssi = Math.max(...network.access_points.map(ap => {
-        if (!ap || !ap.links || !Array.isArray(ap.links)) {
-          return -127; // Minimum RSSI
-        }
-        return Math.max(...ap.links.map(link => {
-          if (!link || typeof link.rssi_dbm !== 'number') {
-            return -127;
-          }
-          return link.rssi_dbm;
-        }));
-      }));
-      
-      // Convert RSSI (-127 to 0) to percentage (0 to 100)
-      const percentage = Math.max(0, Math.min(100, ((maxRssi + 127) / 127) * 100));
-      return percentage;
-    } catch (error) {
-      console.error('Error calculating signal strength:', error);
-      return 0;
-    }
-  };
-
-  // Get security display string
-  const getSecurityString = (security) => {
-    const securityMap = {
-      'Open': 'Open',
-      'Wep': 'WEP',
-      'WpaPersonal': 'WPA',
-      'Wpa2Personal': 'WPA2',
-      'Wpa3Personal': 'WPA3',
-      'WpaEnterprise': 'WPA Enterprise',
-      'Wpa2Enterprise': 'WPA2 Enterprise',
-      'Wpa3Enterprise': 'WPA3 Enterprise',
-      'Unknown': 'Unknown'
-    };
-    return securityMap[security] || 'Unknown';
-  };
-
-  // Check if network is currently connected with safe access
-  const isCurrentlyConnected = (networkEntry) => {
-    const currentConnection = wifiData()?.current_connection;
-    if (!currentConnection || currentConnection.state !== 'Connected') {
-      return false;
-    }
-    
-    // Handle both flattened and nested network structures
-    const network = networkEntry.network || networkEntry;
-    return currentConnection.ssid === network.ssid;
-  };
-
-  onMount(() => {
-    scanNetworks();
   });
 
-  // Signal strength icon component
-  const SignalIcon = (props) => {
-    const strength = props.strength;
-    const bars = Math.ceil((strength / 100) * 4);
-    
-    return (
-      <div class="flex items-end space-x-0.5 h-4 w-4">
-        <For each={Array(4).fill(0)}>
-          {(_, index) => (
-            <div
-              class={`w-0.5 bg-current transition-opacity ${
-                index() < bars ? 'opacity-100' : 'opacity-30'
-              }`}
-              style={{ height: `${(index() + 1) * 25}%` }}
-            />
-          )}
-        </For>
-      </div>
-    );
-  };
+  const ConfigPanel = (props) => (
+    <div class={props.class}>
+      <h2 class="text-lg font-semibold mb-4">{t('wifi.configuration')}</h2>
 
-  // Security icon component
-  const SecurityIcon = (props) => {
-    if (props.security !== 'Open') {
-      return (
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 0 00-8 0v4h8z" />
-        </svg>
-      );
-    }
-    return null;
-  };
+      <Show when={router()}>
+        <div class="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+          <div class="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+            Router: {router().ssid ?? ''}
+          </div>
+          <Show when={needsPassword()}>
+            <Form.Input
+              name="routerPassword"
+              type="password"
+              placeholder={t('wifi.enterRouterPassword')}
+              size="sm"
+            />
+          </Show>
+        </div>
+      </Show>
+
+      <Show when={devices().length > 0}>
+        <div class="mb-6">
+          <div class="text-sm font-medium mb-3">
+            {t('wifi.selectedDevicesCount', { count: devices().length })}
+          </div>
+          <div class="space-y-3 max-h-60 overflow-y-auto">
+            <For each={devices()}>
+              {(ssid) => {
+                const entry = Object.values(wifiData()?.wifis || {}).find((e) => e.ssid === ssid);
+
+                return (
+                  <div class="p-3 border rounded">
+                    <div class="flex justify-between items-center mb-2">
+                      <span class="font-medium text-sm">{ssid}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(event) => handleRemoveDevice(entry, event)}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                    <div class="space-y-2">
+                      <Show when={entry?.security !== 'Open'}>
+                        <Form.Input
+                          name={`deviceConfigs.${ssid}.password`}
+                          type="password"
+                          placeholder={t('wifi.devicePassword')}
+                          size="sm"
+                        />
+                      </Show>
+                      <Form.Input
+                        name={`deviceConfigs.${ssid}.endpoint`}
+                        placeholder={t('wifi.deviceEndpoint')}
+                        size="sm"
+                      />
+                    </div>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </div>
+      </Show>
+
+      <div class="space-y-2">
+        <Form.SubmitButton fullWidth size={props.compact ? 'sm' : 'md'}>
+          {t('wifi.configureDevices')}
+        </Form.SubmitButton>
+        <Button variant="secondary" fullWidth size={props.compact ? 'sm' : 'md'} onClick={reset}>
+          {t('common.reset')}
+        </Button>
+      </div>
+    </div>
+  );
+
+  onMount(scan);
 
   return (
-    <div class="max-w-4xl mx-auto p-6 space-y-6">
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">
-          WiFi Device Setup
-        </h1>
-        <div class="flex space-x-2">
-          <Button
-            variant={currentView() === 'scan' ? 'primary' : 'secondary'}
-            onClick={() => setCurrentView('scan')}
-          >
-            Scan Networks
-          </Button>
-          <Button
-            variant={currentView() === 'configure' ? 'primary' : 'secondary'}
-            onClick={() => setCurrentView('configure')}
-            disabled={!selectedRouter()}
-          >
-            Configure Device
-          </Button>
-        </div>
+    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 lg:pb-0">
+      <div class="p-6">
+        <h1 class="text-2xl font-bold mb-2">{t('wifi.title')}</h1>
+        <p class="text-gray-600 dark:text-gray-400">{t('wifi.description')}</p>
       </div>
 
-      <Show when={currentView() === 'scan'}>
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Available Networks
-            </h2>
-            <Button
-              onClick={scanNetworks}
-              loading={isScanning()}
-              size="sm"
-            >
-              {isScanning() ? 'Scanning...' : 'Refresh'}
-            </Button>
-          </div>
+      <Form formStore={formStore} onSubmit={configure} class="max-w-6xl mx-auto px-6">
+        <div class="lg:grid lg:grid-cols-3 lg:gap-6">
+          {/* Networks List */}
+          <div class="lg:col-span-2 mb-6 lg:mb-0">
+            <div class="bg-white dark:bg-gray-800 rounded-lg border p-6">
+              <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-semibold">{t('wifi.availableNetworks')}</h2>
+                <Button onClick={scan} loading={isScanning()} size="sm">
+                  {isScanning() ? t('wifi.scanning') : t('wifi.refresh')}
+                </Button>
+              </div>
 
-          <Show when={wifiData()?.current_connection}>
-            <div class="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-              <h3 class="font-medium text-blue-900 dark:text-blue-100 mb-2">
-                Current Connection
-              </h3>
-              <p class="text-blue-700 dark:text-blue-300 text-sm">
-                Connected to: {wifiData().current_connection.ssid || 'Unknown'}
-                <Show when={wifiData().current_connection.state !== 'Connected'}>
-                  <span class="ml-2 text-orange-600">
-                    ({wifiData().current_connection.state})
-                  </span>
-                </Show>
-              </p>
-            </div>
-          </Show>
-
-          <Show when={wifiData()?.wifis}>
-            <List
-              items={Object.values(wifiData().wifis || {}).filter(Boolean).map(entry => {
-                console.log('Processing entry:', JSON.stringify(entry, null, 2));
-                
-                // Handle both flattened and nested network structures
-                const network = entry.network || entry;
-                if (!network || !network.ssid) {
-                  console.warn('Invalid network entry:', entry);
-                  return null;
-                }
-                
-                const signalStrength = getSignalStrength(entry);
-                const isConnected = isCurrentlyConnected(entry);
-                
-                return {
-                  ...network,
-                  title: network.ssid,
-                  description: `Signal: ${Math.round(signalStrength)}% | Security: ${getSecurityString(network.security)}`,
-                  icon: <SignalIcon strength={signalStrength} />,
-                  action: (
-                    <div class="flex items-center space-x-2">
-                      <SecurityIcon security={network.security} />
-                      <Show when={isConnected}>
-                        <span class="text-green-600 text-sm font-medium">Connected</span>
-                      </Show>
-                      <Show when={!isConnected}>
-                        <Button
-                          size="sm"
-                          variant={selectedRouter()?.ssid === network.ssid ? 'primary' : 'secondary'}
-                          onClick={() => setSelectedRouter(network)}
-                        >
-                          {selectedRouter()?.ssid === network.ssid ? 'Selected' : 'Select'}
-                        </Button>
-                      </Show>
+              <div class="max-h-96 overflow-y-auto">
+                <Show
+                  when={networks().length > 0}
+                  fallback={
+                    <div class="text-center py-8 text-gray-500">
+                      {isScanning() ? t('wifi.scanningNetworks') : t('wifi.scanPrompt')}
                     </div>
-                  )
-                };
-              }).filter(Boolean)}
-              variant="bordered"
-              hoverable
-            />
-          </Show>
+                  }
+                >
+                  <List items={networks()} variant="divided" />
+                </Show>
+              </div>
+            </div>
+          </div>
 
-          <Show when={!wifiData() && !isScanning()}>
-            <div class="text-center py-8 text-gray-500 dark:text-gray-400">
-              Click "Refresh" to scan for WiFi networks
+          {/* Desktop Configuration Panel */}
+          <Show when={hasSelections()}>
+            <div class="hidden lg:block">
+              <ConfigPanel class="bg-white dark:bg-gray-800 rounded-lg border p-6 sticky top-6" />
             </div>
           </Show>
         </div>
-      </Show>
 
-      <Show when={currentView() === 'configure'}>
-        <div class="space-y-6">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Configure Device
-          </h2>
-
-          <Show when={selectedRouter()}>
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700 space-y-4">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Router Network: "{selectedRouter().ssid}"
-              </h3>
-              
-              <div class="space-y-3">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    WiFi Password
-                  </label>
-                  <Input
-                    type="password"
-                    placeholder="Enter router WiFi password"
-                    value={routerPassword()}
-                    onInput={(e) => setRouterPassword(e.target.value)}
-                    fullWidth
-                  />
+        {/* Mobile Bottom Panel */}
+        <Show when={hasSelections()}>
+          <div class="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t shadow-lg">
+            {/* Main Panel */}
+            <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+              {/* Summary Bar */}
+              <div class="flex justify-between items-center">
+                <div class="flex gap-2 flex-wrap">
+                  <Show when={router()}>
+                    <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                      📡 {router().ssid ?? ''}
+                    </span>
+                  </Show>
+                  <For each={devices().slice(0, 2)}>
+                    {(ssid) => (
+                      <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+                        📱 {ssid}
+                      </span>
+                    )}
+                  </For>
+                  <Show when={devices().length > 2}>
+                    <span class="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded">
+                      +{devices().length - 2}
+                    </span>
+                  </Show>
                 </div>
+                <Button size="sm" variant="ghost" onClick={handleToggleConfig} type="button">
+                  {showConfig() ? '▼' : '▲'}
+                </Button>
               </div>
             </div>
-          </Show>
 
-          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700 space-y-4">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Device Access Point
-            </h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-              Connect to your device's WiFi hotspot to configure it
-            </p>
-            
-            <div class="space-y-3">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Device SSID
-                </label>
-                <Input
-                  placeholder="e.g., SmartBlinds, ESP32-Setup"
-                  value={deviceCredentials().ssid}
-                  onInput={(e) => setDeviceCredentials(prev => ({ ...prev, ssid: e.target.value }))}
-                  fullWidth
-                />
+            {/* Expanded Configuration */}
+            <Show when={showConfig()}>
+              <div class="max-h-96 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
+                <ConfigPanel compact />
               </div>
-              
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Device Password (Optional)
-                </label>
-                <Input
-                  type="password"
-                  placeholder="Device AP password (if any)"
-                  value={deviceCredentials().password}
-                  onInput={(e) => setDeviceCredentials(prev => ({ ...prev, password: e.target.value }))}
-                  fullWidth
-                />
-              </div>
-            </div>
+            </Show>
           </div>
-
-          <div class="flex space-x-3">
-            <Button
-              onClick={registerDevice}
-              loading={isRegistering()}
-              disabled={!selectedRouter() || !routerPassword() || !deviceCredentials().ssid}
-              fullWidth
-            >
-              {isRegistering() ? 'Configuring Device...' : 'Configure Device'}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => setCurrentView('scan')}
-              disabled={isRegistering()}
-            >
-              Back
-            </Button>
-          </div>
-
-          <div class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800">
-            <h4 class="font-medium text-yellow-900 dark:text-yellow-100 mb-2">
-              Setup Instructions
-            </h4>
-            <ol class="text-yellow-700 dark:text-yellow-300 text-sm space-y-1 list-decimal list-inside">
-              <li>Put your device in setup mode</li>
-              <li>Connect to the device's WiFi hotspot</li>
-              <li>Click "Configure Device" to send router credentials</li>
-              <li>Wait for the device to connect to your router</li>
-            </ol>
-          </div>
-        </div>
-      </Show>
+        </Show>
+      </Form>
     </div>
   );
 }
