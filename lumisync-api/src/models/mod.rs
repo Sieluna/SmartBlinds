@@ -2,7 +2,6 @@ mod auth;
 mod control;
 mod device;
 mod group;
-mod message;
 mod region;
 mod settings;
 
@@ -10,7 +9,6 @@ pub use auth::*;
 pub use control::*;
 pub use device::*;
 pub use group::*;
-pub use message::*;
 pub use region::*;
 pub use settings::*;
 

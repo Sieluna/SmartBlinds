@@ -127,21 +127,6 @@ mod tests {
     use super::super::temp_sensor::mock::MockIO as TempMockIO;
     use super::*;
 
-    #[derive(Debug)]
-    pub enum TestError {
-        NotConnected,
-        Other,
-    }
-
-    impl From<TestError> for Error {
-        fn from(err: TestError) -> Self {
-            match err {
-                TestError::NotConnected => Error::NotConnected,
-                TestError::Other => Error::DeviceNotFound,
-            }
-        }
-    }
-
     pub struct MockSerial {
         sent_data: RefCell<Vec<u8>>,
         connected: bool,

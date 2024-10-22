@@ -1,14 +1,8 @@
 mod tcp_protocol;
 mod ws_protocol;
-// mod coap_protocol;
-// mod grpc_protocol;
-// mod webtransport_protocol;
 
 pub use tcp_protocol::*;
 pub use ws_protocol::*;
-// pub use coap_protocol::*;
-// pub use grpc_protocol::*;
-// pub use webtransport_protocol::*;
 
 use async_trait::async_trait;
 use lumisync_api::Message;
@@ -42,9 +36,6 @@ pub trait MessageProtocol: Send + Sync + Debug {
 pub enum ProtocolType {
     WebSocket,
     Tcp,
-    CoAP,
-    GRPC,
-    WebTransport,
 }
 
 impl ProtocolType {
@@ -52,9 +43,6 @@ impl ProtocolType {
         match self {
             ProtocolType::WebSocket => "websocket",
             ProtocolType::Tcp => "tcp",
-            ProtocolType::CoAP => "coap",
-            ProtocolType::GRPC => "grpc",
-            ProtocolType::WebTransport => "webtransport",
         }
     }
 }

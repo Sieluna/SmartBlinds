@@ -2,9 +2,8 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use lumisync_api::{
-    CloudCommand, DeviceValue, EdgeReport, Message, MessageHeader, MessagePayload, Priority,
-};
+use lumisync_api::message::*;
+use lumisync_api::DeviceValue;
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
@@ -302,8 +301,8 @@ impl MessageService {
                 id: message_id,
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
-                source: "cloud".to_string(),
-                destination: "edge".to_string(),
+                source: NodeId::Cloud,
+                target: NodeId::Edge(1),
             },
             payload: MessagePayload::CloudCommand(command),
         };
@@ -426,8 +425,8 @@ mod tests {
                 id: Uuid::new_v4(),
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
-                source: "test".to_string(),
-                destination: "cloud".to_string(),
+                source: NodeId::Cloud,
+                target: NodeId::Edge(1),
             },
             payload: MessagePayload::CloudCommand(CloudCommand::ConfigureWindow {
                 window_id: 1,
@@ -470,8 +469,8 @@ mod tests {
                 id: Uuid::new_v4(),
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
-                source: "device".to_string(),
-                destination: "cloud".to_string(),
+                source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
+                target: NodeId::Cloud,
             },
             payload: MessagePayload::CloudCommand(CloudCommand::ControlDevices {
                 region_id: 1,
@@ -564,8 +563,8 @@ mod tests {
 
         let device_status = DeviceStatus {
             data: device_value,
-            position: 0,
             battery: 100,
+            rssi: 0,
             updated_at: OffsetDateTime::now_utc(),
         };
 
@@ -579,8 +578,8 @@ mod tests {
                 id: Uuid::new_v4(),
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
-                source: "edge".to_string(),
-                destination: "cloud".to_string(),
+                source: NodeId::Edge(1),
+                target: NodeId::Cloud,
             },
             payload: MessagePayload::EdgeReport(edge_report),
         };

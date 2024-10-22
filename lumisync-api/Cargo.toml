@@ -12,6 +12,6 @@ utoipa = { workspace = true, features = ["macros", "time"], optional = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 
 [features]
-default = []
+default = ["std"]
 std = ["serde/std", "serde_json/std", "time/std"]
 docs = ["dep:utoipa", "std"]

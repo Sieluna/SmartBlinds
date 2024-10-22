@@ -135,6 +135,7 @@ pub enum DeviceValue {
         /// Window identifier
         window_id: Id,
         /// Window state data
+        #[serde(flatten)]
         data: WindowData,
     },
     /// Sensor reading data
@@ -142,6 +143,7 @@ pub enum DeviceValue {
         /// Sensor identifier
         sensor_id: Id,
         /// Sensor readings
+        #[serde(flatten)]
         data: SensorData,
     },
 }
@@ -150,10 +152,10 @@ pub enum DeviceValue {
 pub struct DeviceStatus {
     /// Current device data
     pub data: DeviceValue,
-    /// Position percentage
-    pub position: u8,
     /// Battery level percentage
     pub battery: u8,
+    /// RSSI signal strength
+    pub rssi: i8,
     /// Last update time
     pub updated_at: OffsetDateTime,
 }
