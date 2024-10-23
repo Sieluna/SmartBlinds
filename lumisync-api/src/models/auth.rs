@@ -55,6 +55,17 @@ pub struct LoginRequest {
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfoResponse {
+    /// User identifier
+    pub id: Id,
+    /// User email address
+    pub email: String,
+    /// User permission level
+    pub role: UserRole,
+}
+
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserResponse {
     /// User identifier
     pub id: Id,

@@ -189,3 +189,51 @@ async fn test_delete_group() {
     let response = app.router.clone().oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn test_get_group_users() {
+    let app = MockApp::new().await.with_group_handle();
+    let group = create_test_group(app.storage.clone(), "User List Test Group").await;
+    create_test_user_group(app.storage.clone(), app.admin.id, group.id, true).await;
+
+    // Test successful retrieval of group users
+    let request = Request::builder()
+        .uri(&format!("/api/groups/{}/users", group.id))
+        .method(Method::GET)
+        .header("Authorization", format!("Bearer {}", app.token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let users: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+
+    assert!(!users.is_empty());
+    assert!(users.iter().any(|u| u["email"] == json!(app.admin.email)));
+
+    // Test with non-existent group
+    let request = Request::builder()
+        .uri("/api/groups/9999/users")
+        .method(Method::GET)
+        .header("Authorization", format!("Bearer {}", app.token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // Test with invalid token
+    let request = Request::builder()
+        .uri(&format!("/api/groups/{}/users", group.id))
+        .method(Method::GET)
+        .header("Authorization", "Bearer invalid_token")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}

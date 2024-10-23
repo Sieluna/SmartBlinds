@@ -33,6 +33,7 @@ fn openapi() -> Router {
             get_group_by_id,
             update_group,
             delete_group,
+            get_group_users,
             // region
             create_region,
             get_regions_by_group_id,
@@ -65,6 +66,7 @@ fn openapi() -> Router {
                 RegionRole,
                 LoginRequest,
                 RegisterRequest,
+                UserInfoResponse,
                 UserResponse,
                 TokenResponse,
                 // group

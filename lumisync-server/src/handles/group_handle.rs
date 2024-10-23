@@ -28,6 +28,10 @@ pub fn group_router(group_state: GroupState, token_state: TokenState) -> Router 
             "/api/groups/:group_id",
             get(get_group_by_id).put(update_group).delete(delete_group),
         )
+        .route(
+            "/api/groups/:group_id/users",
+            get(get_group_users),
+        )
         .route_layer(middleware::from_fn_with_state(token_state, auth))
         .with_state(group_state)
 }
@@ -392,4 +396,71 @@ pub async fn delete_group(
     tx.commit().await?;
 
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/groups/{group_id}/users",
+    tag = "group",
+    params(
+        ("group_id" = i32, Path, description = "Group ID")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved group members", body = Vec<UserInfoResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "No permission to access this group"),
+        (status = 404, description = "Group not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn get_group_users(
+    Extension(token_data): Extension<TokenClaims>,
+    State(state): State<GroupState>,
+    Path(group_id): Path<i32>,
+) -> Result<Json<Vec<UserInfoResponse>>, ApiError> {
+    let current_user_id = token_data.sub;
+
+    // Check if group exists
+    state
+        .group_repository
+        .find_by_id(group_id)
+        .await?
+        .ok_or(GroupError::GroupNotFound)?;
+
+    // Check if user has permission to view the group
+    let has_permission = state
+        .permission_service
+        .check_permission(
+            current_user_id,
+            ResourceType::Group,
+            group_id,
+            Permission::VIEW,
+        )
+        .await
+        .map_err(|e| anyhow!("Permission check failed: {}", e))?;
+
+    if !has_permission {
+        return Err(GroupError::InsufficientPermission.into());
+    }
+
+    // Get all users in the group
+    let users = state
+        .user_repository
+        .find_all_by_group_id(group_id)
+        .await?;
+
+    // Convert to API response format
+    let user_responses: Vec<UserInfoResponse> = users
+        .into_iter()
+        .map(|user| UserInfoResponse {
+            id: user.id,
+            email: user.email,
+            role: user.role.into(),
+        })
+        .collect();
+
+    Ok(Json(user_responses))
 }
