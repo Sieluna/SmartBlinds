@@ -1,6 +1,9 @@
 pub mod json;
 pub mod postcard;
 
+pub use json::JsonProtocol;
+pub use postcard::PostcardProtocol;
+
 use alloc::vec::Vec;
 
 #[derive(Debug)]
@@ -30,8 +33,8 @@ pub trait Protocol: Send + Sync {
 
 #[derive(Debug, Clone)]
 pub enum SerializationProtocol {
-    Postcard(postcard::PostcardProtocol),
-    Json(json::JsonProtocol),
+    Postcard(PostcardProtocol),
+    Json(JsonProtocol),
 }
 
 impl Protocol for SerializationProtocol {
@@ -59,6 +62,6 @@ impl Protocol for SerializationProtocol {
 
 impl Default for SerializationProtocol {
     fn default() -> Self {
-        Self::Postcard(postcard::PostcardProtocol::default())
+        Self::Postcard(PostcardProtocol)
     }
 }

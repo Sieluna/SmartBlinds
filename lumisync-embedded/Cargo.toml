@@ -4,7 +4,22 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+embassy-executor = { version = "0.6", features = ["executor-thread"] }
+embassy-time = "0.3"
 embedded-hal = "1"
 embedded-hal-nb = "1"
 embedded-io = "0.6"
 libm = "0.2"
+log = "0.4"
+lumisync_api.workspace = true
+serde = { workspace = true, features = ["derive"] }
+time = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+embassy-time = { version = "0.3", features = ["generic-queue-8"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[features]
+default = ["std"]
+std = ["embassy-executor/arch-std", "embassy-time/std", "serde/std", "time/std"]

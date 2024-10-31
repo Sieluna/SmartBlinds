@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use super::*;
+use super::{
+    Command, DeviceStatus, Id, RegionSettingData, SensorData, WindowData, WindowSettingData,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum NodeId {
@@ -236,6 +238,8 @@ pub enum ErrorCode {
 mod tests {
     use alloc::vec;
 
+    use crate::protocols::{JsonProtocol, PostcardProtocol, Protocol, SerializationProtocol};
+
     use super::*;
 
     fn create_device_status_message() -> Message {
@@ -378,8 +382,8 @@ mod tests {
     #[test]
     fn test_serde_roundtrip() {
         let protocols: Vec<SerializationProtocol> = vec![
-            SerializationProtocol::Postcard(postcard::PostcardProtocol::default()),
-            SerializationProtocol::Json(json::JsonProtocol::default()),
+            SerializationProtocol::Postcard(PostcardProtocol::default()),
+            SerializationProtocol::Json(JsonProtocol::default()),
         ];
 
         let samples: Vec<Message> = vec![

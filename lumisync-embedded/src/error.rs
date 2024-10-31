@@ -1,6 +1,6 @@
 use core::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error {
     DeviceNotFound,
     InvalidCommand,
@@ -41,3 +41,5 @@ impl embedded_hal_nb::serial::Error for Error {
         }
     }
 }
+
+pub type Result<T> = core::result::Result<T, Error>;

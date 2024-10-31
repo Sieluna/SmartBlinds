@@ -60,6 +60,18 @@ where
         }
     }
 
+    pub fn get_current_position(&self) -> i64 {
+        self.current_position
+    }
+
+    pub fn get_target_position(&self) -> i64 {
+        self.target_position
+    }
+
+    pub fn get_speed(&self) -> f32 {
+        self.speed
+    }
+
     pub fn set_current_position(&mut self, position: i64) {
         self.current_position = position;
         self.target_position = position;
@@ -212,6 +224,15 @@ where
             self.recalculate_speed();
         }
         self.speed != 0.0 || self.target_position - self.current_position != 0
+    }
+
+    pub async fn run_async(&mut self, current_time: Duration, yield_interval: Duration) {
+        while self.run(current_time) {
+            embassy_time::Timer::after(embassy_time::Duration::from_micros(
+                yield_interval.as_micros() as u64,
+            ))
+            .await;
+        }
     }
 
     pub fn run_speed(&mut self, current_time: Duration) -> bool {

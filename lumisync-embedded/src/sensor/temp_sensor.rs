@@ -123,7 +123,7 @@ where
         // Convert to Celsius (K - 273.15 = °C)
         let celsius = (1.0 / inv_temp) - 273.15;
 
-        celsius.max(-50.0).min(150.0) // Limit to reasonable range
+        celsius.clamp(-50.0, 150.0) // Limit to reasonable range
     }
 
     pub fn set_calibration(&mut self, calibration: TempSensorCalibration) {

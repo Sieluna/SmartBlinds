@@ -102,7 +102,7 @@ where
         let gamma: f32 = 1.5;
         let lux = 10.0 * libm::powf(self.calibration.r10 / ldr_resistance, gamma);
 
-        lux.max(0.0).min(100000.0) // Limit to valid range
+        lux.clamp(0.0, 100000.0) // Limit to valid range
     }
 
     pub fn set_calibration(&mut self, calibration: LightSensorCalibration) {
