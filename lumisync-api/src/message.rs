@@ -100,6 +100,13 @@ pub enum CloudCommand {
         /// Confidence score
         confidence: f32,
     },
+    /// Time synchronization command
+    TimeSync {
+        /// Current cloud server UTC time
+        cloud_time: OffsetDateTime,
+        /// Time zone offset for local time display
+        timezone_offset: Option<i32>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +124,13 @@ pub enum EdgeReport {
         cpu_usage: f32,
         /// Memory usage percentage
         memory_usage: f32,
+    },
+    /// Time synchronization request
+    RequestTimeSync {
+        /// Edge's current local time
+        local_time: OffsetDateTime,
+        /// Time offset from last sync (milliseconds)
+        current_offset_ms: i64,
     },
 }
 
@@ -167,6 +181,8 @@ pub enum DeviceReport {
         battery_level: u8,
         /// Error code (0 = no error)
         error_code: u8,
+        /// Relative timestamp from device boot (milliseconds)
+        relative_timestamp: u64,
     },
     /// Sensor data update
     SensorData {
@@ -174,6 +190,8 @@ pub enum DeviceReport {
         actuator_id: Id,
         /// Sensor readings
         sensor_data: SensorData,
+        /// Relative timestamp from device boot (milliseconds)
+        relative_timestamp: u64,
     },
     /// Device health metrics
     HealthStatus {
@@ -185,10 +203,10 @@ pub enum DeviceReport {
         memory_usage: f32,
         /// Battery level percentage
         battery_level: u8,
-        /// Operation time since boot (seconds)
-        uptime: u64,
         /// Signal strength (RSSI)
         signal_strength: i8,
+        /// Relative timestamp from device boot (milliseconds)
+        relative_timestamp: u64,
     },
 }
 
@@ -258,6 +276,7 @@ mod tests {
                 },
                 battery_level: 85,
                 error_code: 0,
+                relative_timestamp: 1000,
             }),
         }
     }

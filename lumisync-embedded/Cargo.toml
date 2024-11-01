@@ -29,5 +29,5 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 std = ["embassy-executor/arch-std", "embassy-time/std", "serde/std", "time/std"]
-ble = ["trouble-host", "embassy-sync", "static_cell"]
-tcp = ["embassy-net", "embedded-io-async", "smoltcp"]
+ble = ["dep:trouble-host", "dep:embassy-sync", "dep:static_cell"]
+tcp = ["dep:embassy-net", "dep:embedded-io-async", "dep:smoltcp"]

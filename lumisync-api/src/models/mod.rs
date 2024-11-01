@@ -28,8 +28,6 @@ pub struct SensorData {
     pub illuminance: i32,
     /// Relative humidity percentage
     pub humidity: f32,
-    /// Data collection timestamp
-    pub timestamp: OffsetDateTime,
 }
 
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
