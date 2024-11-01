@@ -5,21 +5,29 @@ edition = "2024"
 
 [dependencies]
 embassy-executor = { version = "0.6", features = ["executor-thread"] }
+embassy-futures = "0.1"
+embassy-net = { version = "0.4", features = ["tcp", "dhcpv4", "medium-ethernet", "proto-ipv4"], optional = true }
+embassy-sync = { version = "0.6", optional = true }
 embassy-time = "0.3"
 embedded-hal = "1"
 embedded-hal-nb = "1"
 embedded-io = "0.6"
+embedded-io-async = { version = "0.6", optional = true }
+static_cell = { version = "2", optional = true }
 libm = "0.2"
 log = "0.4"
 lumisync_api.workspace = true
 serde = { workspace = true, features = ["derive"] }
 time = { workspace = true }
+trouble-host = { git = "https://github.com/embassy-rs/trouble.git", optional = true }
 uuid = { workspace = true }
+smoltcp = { version = "0.11", features = ["medium-ethernet", "socket-raw"], optional = true }
 
 [dev-dependencies]
 embassy-time = { version = "0.3", features = ["generic-queue-8"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
-default = ["std"]
 std = ["embassy-executor/arch-std", "embassy-time/std", "serde/std", "time/std"]
+ble = ["trouble-host", "embassy-sync", "static_cell"]
+tcp = ["embassy-net", "embedded-io-async", "smoltcp"]

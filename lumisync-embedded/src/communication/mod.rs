@@ -1,24 +1,20 @@
 pub mod device;
 pub mod edge;
+pub mod transport;
 
 use lumisync_api::Message;
 
+#[allow(async_fn_in_trait)]
 pub trait MessageTransport {
     type Error;
 
     /// Send message
-    fn send_message(
-        &mut self,
-        message: &Message,
-    ) -> impl core::future::Future<Output = Result<(), Self::Error>> + Send;
+    async fn send_message(&mut self, message: &Message) -> Result<(), Self::Error>;
 
     /// Receive message
-    fn receive_message(
-        &mut self,
-    ) -> impl core::future::Future<Output = Result<Option<Message>, Self::Error>> + Send;
+    async fn receive_message(&mut self) -> Result<Option<Message>, Self::Error>;
 }
 
-pub use device::communicator::DeviceCommunicator;
-pub use device::status::DeviceStatus;
-pub use edge::analyzer::{DeviceState, EdgeAnalyzer};
-pub use edge::communicator::EdgeCommunicator;
+pub use device::{DeviceCommunicator, DeviceStatus};
+pub use edge::{EdgeAnalyzer, EdgeCommunicator};
+pub use transport::*;

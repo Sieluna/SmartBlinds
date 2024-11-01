@@ -246,7 +246,7 @@ mod tests {
         Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
+                timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
                 target: NodeId::Edge(1),
@@ -266,7 +266,7 @@ mod tests {
         Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
+                timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Emergency,
                 source: NodeId::Edge(1),
                 target: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
@@ -283,7 +283,7 @@ mod tests {
         Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
+                timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Cloud,
                 target: NodeId::Edge(1),
@@ -302,7 +302,7 @@ mod tests {
         Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
+                timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
                 target: NodeId::Edge(1),
@@ -319,7 +319,7 @@ mod tests {
         Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
+                timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Emergency,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
                 target: NodeId::Edge(1),
@@ -336,7 +336,7 @@ mod tests {
         Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
+                timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
                 target: NodeId::Edge(1),
@@ -347,7 +347,7 @@ mod tests {
                     temperature: 23.5,
                     illuminance: 1500,
                     humidity: 65.2,
-                    timestamp: OffsetDateTime::now_utc(),
+                    timestamp: OffsetDateTime::UNIX_EPOCH,
                 },
             }),
         }
