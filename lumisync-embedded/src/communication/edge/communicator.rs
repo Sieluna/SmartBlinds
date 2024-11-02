@@ -1,11 +1,14 @@
 use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
 
+use lumisync_api::SerializationProtocol;
 use lumisync_api::WindowData;
 use lumisync_api::message::*;
 use time::OffsetDateTime;
 
 use crate::communication::MessageTransport;
 use crate::protocol::message::MessageBuilder;
+use crate::protocol::uuid_generator::DeviceBasedUuidGenerator;
 use crate::time::TimeSync;
 use crate::{Error, Result};
 
@@ -31,10 +34,16 @@ where
 {
     pub fn new(tcp_transport: T, ble_transport: B, edge_id: u8) -> Self {
         let node_id = NodeId::Edge(edge_id);
+
+        // Generate device MAC based on edge_id for UUID generation
+        let device_mac = [0xED, 0xED, 0x00, 0xDE, 0xDE, edge_id];
+        let uuid_generator = Arc::new(DeviceBasedUuidGenerator::new(device_mac, edge_id as u32));
+
         Self {
             tcp_transport,
             ble_transport,
-            message_builder: MessageBuilder::new().with_node_id(node_id),
+            message_builder: MessageBuilder::new(SerializationProtocol::default(), uuid_generator)
+                .with_node_id(node_id),
             time_sync: TimeSync::new(),
         }
     }

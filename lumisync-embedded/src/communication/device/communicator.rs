@@ -1,10 +1,13 @@
+use alloc::sync::Arc;
+
 use embassy_time::{Duration, Timer};
 use lumisync_api::message::*;
-use lumisync_api::{Id, SensorData};
+use lumisync_api::{Id, SensorData, SerializationProtocol};
 use time::OffsetDateTime;
 
 use crate::communication::MessageTransport;
 use crate::protocol::message::MessageBuilder;
+use crate::protocol::uuid_generator::DeviceBasedUuidGenerator;
 use crate::stepper::{Motor, Stepper};
 use crate::time::TimeSync;
 use crate::{Error, Result};
@@ -38,10 +41,17 @@ where
         let mut time_sync = TimeSync::new();
         time_sync.set_sync_interval(Duration::from_secs(1800)); // 30 minutes
 
+        // Create UUID generator using device MAC and ID
+        let uuid_generator = Arc::new(DeviceBasedUuidGenerator::new(
+            device_mac,
+            device_id.unsigned_abs() as u32,
+        ));
+
         Self {
             ble_transport,
             motor,
-            message_builder: MessageBuilder::new().with_node_id(node_id),
+            message_builder: MessageBuilder::new(SerializationProtocol::default(), uuid_generator)
+                .with_node_id(node_id),
             device_state: DeviceStatus {
                 device_id,
                 ..Default::default()

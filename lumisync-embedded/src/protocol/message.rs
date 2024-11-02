@@ -1,30 +1,27 @@
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use lumisync_api::message::*;
 use lumisync_api::{Id, SensorData, WindowData};
 use lumisync_api::{Message, Protocol, SerializationProtocol};
 use time::OffsetDateTime;
-use uuid::Uuid;
 
 use crate::{Error, Result};
+
+use super::uuid_generator::UuidGenerator;
 
 pub struct MessageBuilder {
     protocol: SerializationProtocol,
     node_id: NodeId,
+    uuid_generator: Arc<dyn UuidGenerator>,
 }
 
 impl MessageBuilder {
-    pub fn new() -> Self {
-        Self {
-            protocol: SerializationProtocol::default(),
-            node_id: NodeId::Cloud,
-        }
-    }
-
-    pub fn with_protocol(protocol: SerializationProtocol) -> Self {
+    pub fn new(protocol: SerializationProtocol, uuid_generator: Arc<dyn UuidGenerator>) -> Self {
         Self {
             protocol,
             node_id: NodeId::Cloud,
+            uuid_generator,
         }
     }
 
@@ -33,8 +30,17 @@ impl MessageBuilder {
         self
     }
 
+    pub fn with_uuid_generator(mut self, generator: Arc<dyn UuidGenerator>) -> Self {
+        self.uuid_generator = generator;
+        self
+    }
+
     pub fn set_node_id(&mut self, node_id: NodeId) {
         self.node_id = node_id;
+    }
+
+    pub fn set_uuid_generator(&mut self, generator: Arc<dyn UuidGenerator>) {
+        self.uuid_generator = generator;
     }
 
     pub fn serialize(&self, message: &Message) -> Result<Vec<u8>> {
@@ -57,7 +63,7 @@ impl MessageBuilder {
         timestamp: OffsetDateTime,
     ) -> MessageHeader {
         MessageHeader {
-            id: Uuid::new_v4(),
+            id: self.uuid_generator.generate(),
             timestamp,
             priority,
             source: self.node_id.clone(),
@@ -210,11 +216,5 @@ impl MessageBuilder {
                 command: ActuatorCommand::EmergencyStop,
             }),
         }
-    }
-}
-
-impl Default for MessageBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }

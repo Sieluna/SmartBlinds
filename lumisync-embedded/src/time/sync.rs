@@ -42,9 +42,10 @@ impl TimeSync {
     /// Get current UTC time
     pub fn now_utc(&self) -> OffsetDateTime {
         let boot_elapsed_ms = Instant::now().duration_since(self.boot_instant).as_millis() as i64;
-        let utc_ms = boot_elapsed_ms + self.utc_offset_ms;
+        let utc_ms = boot_elapsed_ms as i128 + self.utc_offset_ms as i128;
 
-        OffsetDateTime::from_unix_timestamp(utc_ms / 1000).unwrap_or(OffsetDateTime::UNIX_EPOCH)
+        OffsetDateTime::from_unix_timestamp_nanos(utc_ms * 1_000_000)
+            .unwrap_or(OffsetDateTime::UNIX_EPOCH)
     }
 
     /// Get milliseconds since boot
