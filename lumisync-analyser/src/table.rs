@@ -4,8 +4,8 @@ use std::path::Path;
 
 use csv::Reader;
 use ordered_float::OrderedFloat;
-use rand::prelude::SliceRandom;
 use rand::Rng;
+use rand::prelude::SliceRandom;
 
 #[derive(Debug, Clone)]
 pub struct Table<'a> {

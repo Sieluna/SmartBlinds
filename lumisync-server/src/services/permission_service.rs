@@ -569,44 +569,52 @@ mod tests {
         assert_eq!(visitor_role, Some(RegionRole::Visitor));
         assert_eq!(regular_role, Some(RegionRole::Visitor));
 
-        assert!(permission_service
-            .check_permission(
-                admin_user.id,
-                ResourceType::Region,
-                region.id,
-                Permission::REGION_FULL
-            )
-            .await
-            .unwrap());
+        assert!(
+            permission_service
+                .check_permission(
+                    admin_user.id,
+                    ResourceType::Region,
+                    region.id,
+                    Permission::REGION_FULL
+                )
+                .await
+                .unwrap()
+        );
 
-        assert!(permission_service
-            .check_permission(
-                owner_user.id,
-                ResourceType::Region,
-                region.id,
-                Permission::REGION_MANAGE_DEVICES
-            )
-            .await
-            .unwrap());
+        assert!(
+            permission_service
+                .check_permission(
+                    owner_user.id,
+                    ResourceType::Region,
+                    region.id,
+                    Permission::REGION_MANAGE_DEVICES
+                )
+                .await
+                .unwrap()
+        );
 
-        assert!(permission_service
-            .check_permission(
-                visitor_user.id,
-                ResourceType::Region,
-                region.id,
-                Permission::VIEW
-            )
-            .await
-            .unwrap());
-        assert!(!permission_service
-            .check_permission(
-                visitor_user.id,
-                ResourceType::Region,
-                region.id,
-                Permission::REGION_MANAGE_DEVICES
-            )
-            .await
-            .unwrap());
+        assert!(
+            permission_service
+                .check_permission(
+                    visitor_user.id,
+                    ResourceType::Region,
+                    region.id,
+                    Permission::VIEW
+                )
+                .await
+                .unwrap()
+        );
+        assert!(
+            !permission_service
+                .check_permission(
+                    visitor_user.id,
+                    ResourceType::Region,
+                    region.id,
+                    Permission::REGION_MANAGE_DEVICES
+                )
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -643,42 +651,54 @@ mod tests {
 
         let permission_service = PermissionService::new(storage.clone());
 
-        assert!(permission_service
-            .can_user_access_region(user1.id, private_region.id)
-            .await
-            .unwrap());
-        assert!(permission_service
-            .can_user_access_region(user1.id, public_region.id)
-            .await
-            .unwrap());
+        assert!(
+            permission_service
+                .can_user_access_region(user1.id, private_region.id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            permission_service
+                .can_user_access_region(user1.id, public_region.id)
+                .await
+                .unwrap()
+        );
 
-        assert!(!permission_service
-            .can_user_access_region(user2.id, private_region.id)
-            .await
-            .unwrap());
-        assert!(permission_service
-            .can_user_access_region(user2.id, public_region.id)
-            .await
-            .unwrap());
+        assert!(
+            !permission_service
+                .can_user_access_region(user2.id, private_region.id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            permission_service
+                .can_user_access_region(user2.id, public_region.id)
+                .await
+                .unwrap()
+        );
 
-        assert!(permission_service
-            .check_permission(
-                user1.id,
-                ResourceType::Region,
-                private_region.id,
-                Permission::VIEW
-            )
-            .await
-            .unwrap());
-        assert!(!permission_service
-            .check_permission(
-                user2.id,
-                ResourceType::Region,
-                private_region.id,
-                Permission::VIEW
-            )
-            .await
-            .unwrap());
+        assert!(
+            permission_service
+                .check_permission(
+                    user1.id,
+                    ResourceType::Region,
+                    private_region.id,
+                    Permission::VIEW
+                )
+                .await
+                .unwrap()
+        );
+        assert!(
+            !permission_service
+                .check_permission(
+                    user2.id,
+                    ResourceType::Region,
+                    private_region.id,
+                    Permission::VIEW
+                )
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -715,42 +735,50 @@ mod tests {
 
         let permission_service = PermissionService::new(storage.clone());
 
-        assert!(permission_service
-            .check_permission(
-                owner_user.id,
-                ResourceType::Device,
-                device.id,
-                Permission::DEVICE_FULL
-            )
-            .await
-            .unwrap());
+        assert!(
+            permission_service
+                .check_permission(
+                    owner_user.id,
+                    ResourceType::Device,
+                    device.id,
+                    Permission::DEVICE_FULL
+                )
+                .await
+                .unwrap()
+        );
 
-        assert!(permission_service
-            .check_permission(
-                visitor_user.id,
-                ResourceType::Device,
-                device.id,
-                Permission::VIEW
-            )
-            .await
-            .unwrap());
-        assert!(permission_service
-            .check_permission(
-                visitor_user.id,
-                ResourceType::Device,
-                device.id,
-                Permission::DEVICE_CONTROL
-            )
-            .await
-            .unwrap());
-        assert!(!permission_service
-            .check_permission(
-                visitor_user.id,
-                ResourceType::Device,
-                device.id,
-                Permission::DEVICE_UPDATE_SETTINGS
-            )
-            .await
-            .unwrap());
+        assert!(
+            permission_service
+                .check_permission(
+                    visitor_user.id,
+                    ResourceType::Device,
+                    device.id,
+                    Permission::VIEW
+                )
+                .await
+                .unwrap()
+        );
+        assert!(
+            permission_service
+                .check_permission(
+                    visitor_user.id,
+                    ResourceType::Device,
+                    device.id,
+                    Permission::DEVICE_CONTROL
+                )
+                .await
+                .unwrap()
+        );
+        assert!(
+            !permission_service
+                .check_permission(
+                    visitor_user.id,
+                    ResourceType::Device,
+                    device.id,
+                    Permission::DEVICE_UPDATE_SETTINGS
+                )
+                .await
+                .unwrap()
+        );
     }
 }

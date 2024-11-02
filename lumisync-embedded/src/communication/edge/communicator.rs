@@ -20,9 +20,6 @@ where
     ble_transport: B,
     /// Message builder
     message_builder: MessageBuilder,
-    /// Current Edge node ID (used in message builder)
-    #[allow(dead_code)] // Used internally by message builder
-    node_id: NodeId,
     /// Time synchronization manager
     time_sync: TimeSync,
 }
@@ -37,8 +34,7 @@ where
         Self {
             tcp_transport,
             ble_transport,
-            message_builder: MessageBuilder::new().with_node_id(node_id.clone()),
-            node_id,
+            message_builder: MessageBuilder::new().with_node_id(node_id),
             time_sync: TimeSync::new(),
         }
     }
@@ -71,10 +67,7 @@ where
                 let position = 50; // Default position
                 self.send_window_command(*window_id, position).await?;
             }
-            CloudCommand::TimeSync {
-                cloud_time,
-                timezone_offset: _,
-            } => {
+            CloudCommand::TimeSync { cloud_time } => {
                 self.time_sync.sync(*cloud_time);
                 log::info!("Edge time synced: {}", cloud_time);
             }

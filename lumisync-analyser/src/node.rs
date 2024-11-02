@@ -1,8 +1,8 @@
 use std::io::{self, Error, ErrorKind, Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use rand::seq::IndexedRandom;
 use rand::Rng;
+use rand::seq::IndexedRandom;
 
 use crate::criterion::{Criterion, CriterionType};
 use crate::table::Table;

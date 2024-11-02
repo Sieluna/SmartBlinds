@@ -22,8 +22,6 @@ where
     motor: M,
     /// Message builder
     message_builder: MessageBuilder,
-    /// Current device node ID
-    node_id: NodeId,
     /// Device status
     device_state: DeviceStatus,
     /// Time synchronization for relative timestamps
@@ -43,8 +41,7 @@ where
         Self {
             ble_transport,
             motor,
-            message_builder: MessageBuilder::new().with_node_id(node_id.clone()),
-            node_id,
+            message_builder: MessageBuilder::new().with_node_id(node_id),
             device_state: DeviceStatus {
                 device_id,
                 ..Default::default()

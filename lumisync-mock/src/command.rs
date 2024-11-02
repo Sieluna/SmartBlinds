@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use rumqttd::local::LinkTx;
 use rumqttd::Notification;
+use rumqttd::local::LinkTx;
 use serde_json::from_slice;
 use tokio::sync::mpsc;
 
-use crate::broker::MockBroker;
 use crate::SensorPayload;
+use crate::broker::MockBroker;
 
 pub struct CommandHandler {
     pub cmd_tx: mpsc::Sender<(SensorPayload, u32)>,

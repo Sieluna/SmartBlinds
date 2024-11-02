@@ -2,8 +2,8 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use lumisync_api::message::*;
 use lumisync_api::DeviceValue;
+use lumisync_api::message::*;
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
@@ -303,11 +303,10 @@ impl MessageService {
                 // Send time sync response with current cloud time
                 let time_sync_command = CloudCommand::TimeSync {
                     cloud_time: OffsetDateTime::now_utc(),
-                    timezone_offset: None, // No timezone offset specified
                 };
 
                 self.send_control_message(time_sync_command).await?;
-                
+
                 tracing::info!("Time sync response sent to edge device");
             }
         }
@@ -699,14 +698,16 @@ mod tests {
         );
 
         // Verify that the time sync was logged (events table should have the entry)
-        let event_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM events WHERE event_type = 'edge_message'"
-        )
-        .fetch_one(storage.get_pool())
-        .await
-        .unwrap();
-        
-        assert!(event_count > 0, "Time sync request should be logged in events");
+        let event_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE event_type = 'edge_message'")
+                .fetch_one(storage.get_pool())
+                .await
+                .unwrap();
+
+        assert!(
+            event_count > 0,
+            "Time sync request should be logged in events"
+        );
 
         // Stop service
         message_service.stop().await.unwrap();

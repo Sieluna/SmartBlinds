@@ -11,8 +11,8 @@ exclude = ["samples"]
 resolver = "2"
 
 [workspace.dependencies]
-lumisync_analyser = { path = "./lumisync-analyser" }
-lumisync_api = { path = "./lumisync-api" }
+lumisync_analyser = { path = "./lumisync-analyser", default-features = false }
+lumisync_api = { path = "./lumisync-api", default-features = false }
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 time = { version = "0.3", default-features = false }

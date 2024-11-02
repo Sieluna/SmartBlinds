@@ -4,8 +4,8 @@ use std::str::FromStr;
 use std::{env, error, fs, io};
 
 use serde::{Deserialize, Serialize};
-use toml::map::Map;
 use toml::Value;
+use toml::map::Map;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Server {

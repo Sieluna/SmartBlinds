@@ -3,12 +3,12 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use axum::extract::{Path, State};
 use axum::routing::{get, put};
-use axum::{middleware, Extension, Json, Router};
+use axum::{Extension, Json, Router, middleware};
 use lumisync_api::models::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::errors::{ApiError, DeviceError, RegionError, SettingError};
-use crate::middlewares::{auth, TokenState};
+use crate::middlewares::{TokenState, auth};
 use crate::models::{Device, DeviceSetting};
 use crate::repositories::{
     DeviceRecordRepository, DeviceRepository, DeviceSettingRepository, RegionRepository,

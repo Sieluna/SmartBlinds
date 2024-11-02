@@ -4,13 +4,13 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, RwLock};
 
 use async_trait::async_trait;
+use axum::Router;
 use axum::extract::{
-    ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     State,
+    ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
 };
 use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::Router;
 use futures::{SinkExt, StreamExt};
 use lumisync_api::{Message, Protocol, SerializationProtocol};
 use tokio::net::TcpListener;

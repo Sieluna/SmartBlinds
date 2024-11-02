@@ -104,8 +104,6 @@ pub enum CloudCommand {
     TimeSync {
         /// Current cloud server UTC time
         cloud_time: OffsetDateTime,
-        /// Time zone offset for local time display
-        timezone_offset: Option<i32>,
     },
 }
 

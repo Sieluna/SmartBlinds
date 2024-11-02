@@ -89,9 +89,11 @@ async fn test_get_regions_by_group_id() {
     let regions: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
     assert!(!regions.is_empty());
-    assert!(regions
-        .iter()
-        .any(|r| r["name"] == json!("Test Region List")));
+    assert!(
+        regions
+            .iter()
+            .any(|r| r["name"] == json!("Test Region List"))
+    );
 
     // Test unauthorized access
     let request = Request::builder()

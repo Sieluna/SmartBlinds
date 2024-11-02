@@ -3,12 +3,12 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use axum::extract::{Path, State};
 use axum::routing::get;
-use axum::{middleware, Extension, Json, Router};
+use axum::{Extension, Json, Router, middleware};
 use lumisync_api::models::*;
 use time::OffsetDateTime;
 
 use crate::errors::{ApiError, AuthError, GroupError};
-use crate::middlewares::{auth, TokenState};
+use crate::middlewares::{TokenState, auth};
 use crate::models::Group;
 use crate::repositories::{GroupRepository, RegionRepository, UserRepository};
 use crate::services::{Permission, PermissionService, ResourceType, TokenClaims};
@@ -28,10 +28,7 @@ pub fn group_router(group_state: GroupState, token_state: TokenState) -> Router 
             "/api/groups/:group_id",
             get(get_group_by_id).put(update_group).delete(delete_group),
         )
-        .route(
-            "/api/groups/:group_id/users",
-            get(get_group_users),
-        )
+        .route("/api/groups/:group_id/users", get(get_group_users))
         .route_layer(middleware::from_fn_with_state(token_state, auth))
         .with_state(group_state)
 }
@@ -447,10 +444,7 @@ pub async fn get_group_users(
     }
 
     // Get all users in the group
-    let users = state
-        .user_repository
-        .find_all_by_group_id(group_id)
-        .await?;
+    let users = state.user_repository.find_all_by_group_id(group_id).await?;
 
     // Convert to API response format
     let user_responses: Vec<UserInfoResponse> = users

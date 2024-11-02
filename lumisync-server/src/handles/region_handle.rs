@@ -3,11 +3,11 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use axum::extract::{Path, State};
 use axum::routing::{get, put};
-use axum::{middleware, Extension, Json, Router};
+use axum::{Extension, Json, Router, middleware};
 use lumisync_api::models::*;
 
 use crate::errors::{ApiError, GroupError, RegionError, SettingError};
-use crate::middlewares::{auth, TokenState};
+use crate::middlewares::{TokenState, auth};
 use crate::models::{Region, RegionSetting};
 use crate::repositories::*;
 use crate::services::{Permission, PermissionService, ResourceType, TokenClaims};

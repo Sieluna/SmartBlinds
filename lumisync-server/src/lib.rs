@@ -34,7 +34,7 @@ pub mod tests {
     use std::sync::Arc;
 
     use lumisync_api::{DeviceType, UserRole};
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use time::OffsetDateTime;
 
     use crate::configs::{Database, SchemaManager, Storage};

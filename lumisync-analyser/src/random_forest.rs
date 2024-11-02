@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rand::rngs::StdRng;
-use rand::{random, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, random};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::criterion::Criterion;

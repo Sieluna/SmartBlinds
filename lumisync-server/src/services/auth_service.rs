@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use argon2::password_hash::{rand_core, SaltString};
-use argon2::{password_hash, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::password_hash::{SaltString, rand_core};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash};
 
 use crate::models::User;
 

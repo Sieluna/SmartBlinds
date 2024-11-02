@@ -132,9 +132,11 @@ async fn test_get_devices_by_region_id() {
     let devices: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
     assert!(!devices.is_empty());
-    assert!(devices
-        .iter()
-        .any(|d| d["name"] == json!("List Test Device")));
+    assert!(
+        devices
+            .iter()
+            .any(|d| d["name"] == json!("List Test Device"))
+    );
 
     // Test unauthorized access
     let request = Request::builder()
@@ -435,10 +437,12 @@ async fn test_update_device_status() {
         .unwrap();
     let command_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(command_response["message"]
-        .as_str()
-        .unwrap()
-        .contains("Status Test Device"));
+    assert!(
+        command_response["message"]
+            .as_str()
+            .unwrap()
+            .contains("Status Test Device")
+    );
 
     // Get device to verify status was updated
     let request = Request::builder()
