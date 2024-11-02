@@ -366,8 +366,8 @@ mod tests {
                     temperature: 23.5,
                     illuminance: 1500,
                     humidity: 65.2,
-                    timestamp: OffsetDateTime::UNIX_EPOCH,
                 },
+                relative_timestamp: 1000,
             }),
         }
     }

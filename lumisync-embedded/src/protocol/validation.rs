@@ -59,7 +59,7 @@ impl MessageValidator {
                 actuator_id,
                 window_data,
                 battery_level,
-                error_code: _,
+                ..
             } => {
                 if *actuator_id == 0 {
                     return Err(Error::InvalidState);
@@ -71,10 +71,7 @@ impl MessageValidator {
                     return Err(Error::InvalidState);
                 }
             }
-            DeviceReport::SensorData {
-                actuator_id,
-                sensor_data: _,
-            } => {
+            DeviceReport::SensorData { actuator_id, .. } => {
                 if *actuator_id == 0 {
                     return Err(Error::InvalidState);
                 }
@@ -98,7 +95,7 @@ mod tests {
         let valid_message = Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
+                timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
                 target: NodeId::Edge(1),

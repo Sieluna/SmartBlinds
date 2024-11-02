@@ -1,7 +1,8 @@
 use alloc::vec::Vec;
 
-use lumisync_api::protocols::{Protocol, SerializationProtocol};
-use lumisync_api::{Message, MessageHeader, MessagePayload, NodeId, Priority};
+use lumisync_api::message::*;
+use lumisync_api::{Id, SensorData, WindowData};
+use lumisync_api::{Message, Protocol, SerializationProtocol};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -9,71 +10,31 @@ use crate::{Error, Result};
 
 pub struct MessageBuilder {
     protocol: SerializationProtocol,
+    node_id: NodeId,
 }
 
 impl MessageBuilder {
     pub fn new() -> Self {
         Self {
             protocol: SerializationProtocol::default(),
+            node_id: NodeId::Cloud,
         }
     }
 
     pub fn with_protocol(protocol: SerializationProtocol) -> Self {
-        Self { protocol }
-    }
-
-    /// Create device status message
-    pub fn device_status(
-        &self,
-        source: NodeId,
-        target: NodeId,
-        actuator_id: lumisync_api::Id,
-        window_position: u8,
-        battery_level: u8,
-        error_code: u8,
-    ) -> Message {
-        Message {
-            header: MessageHeader {
-                id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
-                priority: Priority::Regular,
-                source,
-                target,
-            },
-            payload: MessagePayload::DeviceReport(lumisync_api::DeviceReport::Status {
-                actuator_id,
-                window_data: lumisync_api::WindowData {
-                    target_position: window_position,
-                },
-                battery_level,
-                error_code,
-            }),
+        Self {
+            protocol,
+            node_id: NodeId::Cloud,
         }
     }
 
-    /// Create device control message
-    pub fn actuator_command(
-        &self,
-        source: NodeId,
-        target: NodeId,
-        actuator_id: lumisync_api::Id,
-        sequence: u16,
-        position: u8,
-    ) -> Message {
-        Message {
-            header: MessageHeader {
-                id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
-                priority: Priority::Regular,
-                source,
-                target,
-            },
-            payload: MessagePayload::EdgeCommand(lumisync_api::EdgeCommand::Actuator {
-                actuator_id,
-                sequence,
-                command: lumisync_api::ActuatorCommand::SetWindowPosition(position),
-            }),
-        }
+    pub fn with_node_id(mut self, node_id: NodeId) -> Self {
+        self.node_id = node_id;
+        self
+    }
+
+    pub fn set_node_id(&mut self, node_id: NodeId) {
+        self.node_id = node_id;
     }
 
     pub fn serialize(&self, message: &Message) -> Result<Vec<u8>> {
@@ -86,6 +47,169 @@ impl MessageBuilder {
         self.protocol
             .deserialize(data)
             .map_err(|_| Error::SerializationError)
+    }
+
+    /// Create a basic message header
+    fn create_header(
+        &self,
+        target: NodeId,
+        priority: Priority,
+        timestamp: OffsetDateTime,
+    ) -> MessageHeader {
+        MessageHeader {
+            id: Uuid::new_v4(),
+            timestamp,
+            priority,
+            source: self.node_id.clone(),
+            target,
+        }
+    }
+
+    /// Create device status update message
+    pub fn create_device_status(
+        &self,
+        target: NodeId,
+        actuator_id: Id,
+        window_data: WindowData,
+        battery_level: u8,
+        error_code: u8,
+        relative_timestamp: u64,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::DeviceReport(DeviceReport::Status {
+                actuator_id,
+                window_data,
+                battery_level,
+                error_code,
+                relative_timestamp,
+            }),
+        }
+    }
+
+    /// Create sensor data message
+    pub fn create_sensor_data(
+        &self,
+        target: NodeId,
+        actuator_id: Id,
+        sensor_data: SensorData,
+        relative_timestamp: u64,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::DeviceReport(DeviceReport::SensorData {
+                actuator_id,
+                sensor_data,
+                relative_timestamp,
+            }),
+        }
+    }
+
+    /// Create health status message
+    pub fn create_health_status(
+        &self,
+        target: NodeId,
+        device_id: Id,
+        cpu_usage: f32,
+        memory_usage: f32,
+        battery_level: u8,
+        signal_strength: i8,
+        relative_timestamp: u64,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::DeviceReport(DeviceReport::HealthStatus {
+                device_id,
+                cpu_usage,
+                memory_usage,
+                battery_level,
+                signal_strength,
+                relative_timestamp,
+            }),
+        }
+    }
+
+    /// Create actuator command message
+    pub fn create_actuator_command(
+        &self,
+        target: NodeId,
+        actuator_id: Id,
+        sequence: u16,
+        command: ActuatorCommand,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::EdgeCommand(EdgeCommand::Actuator {
+                actuator_id,
+                sequence,
+                command,
+            }),
+        }
+    }
+
+    /// Create health status request message
+    pub fn create_health_status_request(
+        &self,
+        target: NodeId,
+        actuator_id: Id,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::EdgeCommand(EdgeCommand::RequestHealthStatus { actuator_id }),
+        }
+    }
+
+    /// Create sensor data request message
+    pub fn create_sensor_data_request(
+        &self,
+        target: NodeId,
+        actuator_id: Id,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::EdgeCommand(EdgeCommand::RequestSensorData { actuator_id }),
+        }
+    }
+
+    /// Create time sync request message
+    pub fn create_time_sync_request(
+        &self,
+        target: NodeId,
+        local_time: OffsetDateTime,
+        current_offset_ms: i64,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::EdgeReport(EdgeReport::RequestTimeSync {
+                local_time,
+                current_offset_ms,
+            }),
+        }
+    }
+
+    /// Create emergency message with high priority
+    pub fn create_emergency_stop(
+        &self,
+        target: NodeId,
+        actuator_id: Id,
+        sequence: u16,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Emergency, timestamp),
+            payload: MessagePayload::EdgeCommand(EdgeCommand::Actuator {
+                actuator_id,
+                sequence,
+                command: ActuatorCommand::EmergencyStop,
+            }),
+        }
     }
 }
 

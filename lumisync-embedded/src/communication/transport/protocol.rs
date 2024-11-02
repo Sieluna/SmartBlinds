@@ -134,7 +134,7 @@ mod tests {
         let message = Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
-                timestamp: OffsetDateTime::now_utc(),
+                timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Edge(1),
                 target: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),

@@ -57,6 +57,11 @@ impl MessageService {
         }
     }
 
+    /// Get read-only reference to protocol manager
+    pub fn get_protocol_manager(&self) -> &ProtocolManager {
+        &self.protocol_manager
+    }
+
     /// Initialize pre-configured protocol adapters
     pub fn init_protocols(
         &mut self,
@@ -240,6 +245,7 @@ impl MessageService {
 
                 if count > 0 {
                     for device in devices {
+                        let timestamp: OffsetDateTime = device.updated_at;
                         match &device.data {
                             DeviceValue::Window { window_id, data } => {
                                 // Update window state
@@ -262,7 +268,7 @@ impl MessageService {
                                 sqlx::query("INSERT INTO device_records (device_id, data, time) VALUES ($1, $2, $3)")
                                     .bind(sensor_id)
                                     .bind(sensor_data)
-                                    .bind(data.timestamp)
+                                    .bind(timestamp)
                                     .execute(self.storage.get_pool())
                                     .await?;
                             }
@@ -283,6 +289,26 @@ impl MessageService {
                     memory_usage
                 );
                 // These metrics can be stored for monitoring
+            }
+            EdgeReport::RequestTimeSync {
+                local_time,
+                current_offset_ms,
+            } => {
+                tracing::info!(
+                    "Time sync request from edge device: local_time={}, offset={}ms",
+                    local_time,
+                    current_offset_ms
+                );
+
+                // Send time sync response with current cloud time
+                let time_sync_command = CloudCommand::TimeSync {
+                    cloud_time: OffsetDateTime::now_utc(),
+                    timezone_offset: None, // No timezone offset specified
+                };
+
+                self.send_control_message(time_sync_command).await?;
+                
+                tracing::info!("Time sync response sent to edge device");
             }
         }
 
@@ -314,11 +340,6 @@ impl MessageService {
         self.send_app_message(message).await?;
 
         Ok(message_id)
-    }
-
-    /// Get read-only reference to protocol manager
-    pub fn get_protocol_manager(&self) -> &ProtocolManager {
-        &self.protocol_manager
     }
 }
 
@@ -553,7 +574,6 @@ mod tests {
             temperature: 24.5,
             humidity: 60.0,
             illuminance: 600,
-            timestamp: OffsetDateTime::now_utc(),
         };
 
         let device_value = DeviceValue::Sensor {
@@ -630,6 +650,63 @@ mod tests {
         // Get returned message ID
         let message_id = result.unwrap();
         assert_ne!(message_id, Uuid::nil(), "Message ID should not be empty");
+
+        // Stop service
+        message_service.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_time_sync_request_handling() {
+        let storage = setup_test_db().await;
+        let mut message_service = MessageService::new(storage.clone());
+
+        let config = MessageServiceConfig {
+            // Use different ports to avoid conflicts between tests
+            websocket_addr: "127.0.0.1:18085".parse().unwrap(),
+            tcp_addr: "127.0.0.1:19005".parse().unwrap(),
+            enable_websocket: true,
+            enable_tcp: true,
+        };
+
+        // Initialize protocols and start service
+        message_service.init_protocols(config).unwrap();
+        message_service.start().await.unwrap();
+
+        // Create a time sync request from edge device
+        let edge_time = OffsetDateTime::from_unix_timestamp(1609459200).unwrap(); // 2021-01-01 00:00:00 UTC
+        let time_sync_request = EdgeReport::RequestTimeSync {
+            local_time: edge_time,
+            current_offset_ms: -5000, // 5 seconds behind
+        };
+
+        let message = Message {
+            header: MessageHeader {
+                id: Uuid::new_v4(),
+                timestamp: OffsetDateTime::now_utc(),
+                priority: Priority::Regular,
+                source: NodeId::Edge(1),
+                target: NodeId::Cloud,
+            },
+            payload: MessagePayload::EdgeReport(time_sync_request),
+        };
+
+        // Process time sync request
+        let result = message_service.process_edge_message(message).await;
+        assert!(
+            result.is_ok(),
+            "Failed to process time sync request: {:?}",
+            result.err()
+        );
+
+        // Verify that the time sync was logged (events table should have the entry)
+        let event_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM events WHERE event_type = 'edge_message'"
+        )
+        .fetch_one(storage.get_pool())
+        .await
+        .unwrap();
+        
+        assert!(event_count > 0, "Time sync request should be logged in events");
 
         // Stop service
         message_service.stop().await.unwrap();
