@@ -1,4 +1,4 @@
-use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use core::net::{Ipv4Addr, SocketAddrV4};
 
 use embassy_net::{IpAddress, IpEndpoint, Stack, tcp::TcpSocket};
 use embedded_io_async::{Read, Write};
@@ -24,7 +24,7 @@ impl TcpTransport {
             .parse::<Ipv4Addr>()
             .map_err(|_| Error::InitializationError)?;
 
-        let server_endpoint = IpEndpoint::from(SocketAddr::V4(SocketAddrV4::new(server_ip, port)));
+        let server_endpoint = IpEndpoint::from(SocketAddrV4::new(server_ip, port));
 
         let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));

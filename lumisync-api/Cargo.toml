@@ -9,8 +9,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["alloc"] }
 time = { workspace = true, features = ["serde"] }
 utoipa = { workspace = true, features = ["macros", "time"], optional = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
+uuid = { workspace = true, features = ["serde"] }
 
 [features]
+default = ["std"]
 std = ["serde/std", "serde_json/std", "time/std"]
 docs = ["dep:utoipa", "std"]

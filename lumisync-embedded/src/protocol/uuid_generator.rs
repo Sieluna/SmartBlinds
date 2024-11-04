@@ -1,4 +1,4 @@
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use uuid::Uuid;
 
@@ -25,7 +25,7 @@ impl UuidGenerator for RandomUuidGenerator {
 
 pub struct DeviceBasedUuidGenerator {
     device_id: [u8; 16],
-    counter: AtomicU64,
+    counter: AtomicUsize,
 }
 
 impl DeviceBasedUuidGenerator {
@@ -36,7 +36,7 @@ impl DeviceBasedUuidGenerator {
 
         Self {
             device_id: device_info,
-            counter: AtomicU64::new(0),
+            counter: AtomicUsize::new(0),
         }
     }
 }
@@ -55,7 +55,7 @@ impl UuidGenerator for DeviceBasedUuidGenerator {
         let mut data = self.device_id;
 
         let hash = extra_data.iter().fold(counter, |acc, &b| {
-            acc.wrapping_mul(31).wrapping_add(b as u64)
+            acc.wrapping_mul(31).wrapping_add(b as usize)
         });
 
         data[8..].copy_from_slice(&hash.to_be_bytes());

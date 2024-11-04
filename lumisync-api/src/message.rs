@@ -261,7 +261,7 @@ mod tests {
     fn create_device_status_message() -> Message {
         Message {
             header: MessageHeader {
-                id: Uuid::new_v4(),
+                id: Uuid::nil(),
                 timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
@@ -282,7 +282,7 @@ mod tests {
     fn create_edge_command_message() -> Message {
         Message {
             header: MessageHeader {
-                id: Uuid::new_v4(),
+                id: Uuid::nil(),
                 timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Emergency,
                 source: NodeId::Edge(1),
@@ -299,7 +299,7 @@ mod tests {
     fn create_cloud_command_message() -> Message {
         Message {
             header: MessageHeader {
-                id: Uuid::new_v4(),
+                id: Uuid::nil(),
                 timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Cloud,
@@ -318,14 +318,14 @@ mod tests {
     fn create_ack_message() -> Message {
         Message {
             header: MessageHeader {
-                id: Uuid::new_v4(),
+                id: Uuid::nil(),
                 timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
                 target: NodeId::Edge(1),
             },
             payload: MessagePayload::Acknowledge(AckPayload {
-                original_msg_id: Uuid::new_v4(),
+                original_msg_id: Uuid::nil(),
                 status: String::from("OK"),
                 details: Some(String::from("Position set to 50%")),
             }),
@@ -335,14 +335,14 @@ mod tests {
     fn create_error_message() -> Message {
         Message {
             header: MessageHeader {
-                id: Uuid::new_v4(),
+                id: Uuid::nil(),
                 timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Emergency,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
                 target: NodeId::Edge(1),
             },
             payload: MessagePayload::Error(ErrorPayload {
-                original_msg_id: Some(Uuid::new_v4()),
+                original_msg_id: Some(Uuid::nil()),
                 code: ErrorCode::HardwareFailure,
                 message: String::from("Motor driver failure detected"),
             }),
@@ -352,7 +352,7 @@ mod tests {
     fn create_sensor_data_message() -> Message {
         Message {
             header: MessageHeader {
-                id: Uuid::new_v4(),
+                id: Uuid::nil(),
                 timestamp: OffsetDateTime::UNIX_EPOCH,
                 priority: Priority::Regular,
                 source: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
