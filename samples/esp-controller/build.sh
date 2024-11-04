@@ -6,13 +6,13 @@ FLASH=false
 MODEL="esp32"
 
 declare -A DEVICE_PROFILES=(
-    ["esp32"]="esp:xtensa-esp32-espidf:web-flash"
-    ["esp32c2"]="nightly:riscv32imc-esp-espidf:web-flash"
-    ["esp32c3"]="nightly:riscv32imc-esp-espidf:web-flash"
-    ["esp32c6"]="nightly:riscv32imac-esp-espidf:web-flash"
-    ["esp32h2"]="nightly:riscv32imac-esp-espidf:web-flash"
-    ["esp32s2"]="esp:xtensa-esp32s2-espidf:web-flash"
-    ["esp32s3"]="esp:xtensa-esp32s3-espidf:web-flash"
+    ["esp32"]="esp:xtensa-esp32-none-elf:web-flash"
+    ["esp32c2"]="nightly:riscv32imc-unknown-none-elf:web-flash"
+    ["esp32c3"]="nightly:riscv32imc-unknown-none-elf:web-flash"
+    ["esp32c6"]="nightly:riscv32imac-unknown-none-elf:web-flash"
+    ["esp32h2"]="nightly:riscv32imac-unknown-none-elf:web-flash"
+    ["esp32s2"]="esp:xtensa-esp32s2-none-elf:web-flash"
+    ["esp32s3"]="esp:xtensa-esp32s3-none-elf:web-flash"
 )
 
 while [ $# -gt 0 ]; do
@@ -60,6 +60,7 @@ build_device() {
 
     [[ -n "$EMBEDDED_TARGET" ]] && args+=(--target "$EMBEDDED_TARGET")
     [[ "$BUILD_MODE" == "release" ]] && args+=(--release)
+    args+=(--features "$MODEL")
 
     echo "Building embedded for $MODEL in $BUILD_MODE mode..."
     (
@@ -81,7 +82,7 @@ flash_device() {
 
     case "$MODEL" in
         esp*)
-            flash_cmd="$FLASH_TOOL --chip $MODEL target/$EMBEDDED_TARGET/$BUILD_MODE/controller"
+            flash_cmd="$FLASH_TOOL --chip $MODEL target/$EMBEDDED_TARGET/$BUILD_MODE/esp-controller"
             ;;
         *)
             echo "Error: Unsupported model '$MODEL' for flashing." >&2

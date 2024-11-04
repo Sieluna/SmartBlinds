@@ -1,5 +1,5 @@
 [package]
-name = "esp-edge"
+name = "esp-controller"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,6 @@ edition = "2021"
 bt-hci = "0.1"
 critical-section = "1"
 embassy-executor = { version = "0.6",  features = ["task-arena-size-12288"] }
-embassy-net = { version = "0.4", features = ["dhcpv4", "medium-ethernet", "tcp", "udp"] }
 embassy-time = { version = "0.3",  features = ["generic-queue-8"] }
 embassy-futures = "0.1"
 embedded-io = "0.6"
@@ -17,12 +16,12 @@ esp-backtrace = { version = "0.14", features = ["exception-handler", "panic-hand
 esp-hal = { version = "0.22", features = ["unstable"] }
 esp-hal-embassy = "0.5"
 esp-println = { version = "0.12", features = ["log"] }
-esp-storage = "0.3"
-esp-wifi = { version = "0.10", features = ["ble", "coex", "log", "wifi"] }
+esp-storage = "0.5"
+esp-wifi = { version = "0.10", features = ["ble", "coex", "log"] }
 heapless = "0.8"
 log = "0.4"
 lumisync_api = { path = "../../lumisync-api", default-features = false }
-lumisync_embedded = { path = "../../lumisync-embedded", default-features = false, features = ["ble", "tcp"] }
+lumisync_embedded = { path = "../../lumisync-embedded", default-features = false, features = ["ble"] }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 static_cell = "2"
 time = { version = "0.3", default-features = false, features = ["alloc"] }
