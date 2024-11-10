@@ -21,8 +21,8 @@ where
 {
     /// BLE transport layer (for communicating with Edge)
     ble_transport: T,
-    /// Motor controller
-    motor: M,
+    /// Stepper controller
+    stepper: Stepper<M>,
     /// Message builder
     message_builder: MessageBuilder,
     /// Device status
@@ -34,9 +34,9 @@ where
 impl<T, M> DeviceCommunicator<T, M>
 where
     T: MessageTransport,
-    M: Motor + Clone,
+    M: Motor,
 {
-    pub fn new(ble_transport: T, motor: M, device_mac: [u8; 6], device_id: Id) -> Self {
+    pub fn new(ble_transport: T, stepper: Stepper<M>, device_mac: [u8; 6], device_id: Id) -> Self {
         let node_id = NodeId::Device(device_mac);
         let mut time_sync = TimeSync::new();
         time_sync.set_sync_interval(Duration::from_secs(1800)); // 30 minutes
@@ -49,7 +49,7 @@ where
 
         Self {
             ble_transport,
-            motor,
+            stepper,
             message_builder: MessageBuilder::new(SerializationProtocol::default(), uuid_generator)
                 .with_node_id(node_id),
             device_state: DeviceStatus {
@@ -137,16 +137,11 @@ where
         self.device_state.error_code = 0;
 
         let steps_needed = self.calculate_steps_needed(position);
-        self.motor.enable();
+        self.stepper.enable_motor();
+        self.stepper.move_to(steps_needed);
 
-        let mut stepper = Stepper::new(self.motor.clone());
-        stepper.set_max_speed(500.0);
-        stepper.set_acceleration(200.0);
-        stepper.set_current_position(0);
-        stepper.move_to(steps_needed);
-
-        await_stepper_completion(&mut stepper).await;
-        gradual_shutdown(&mut stepper, &mut self.motor).await;
+        await_stepper_completion(&mut self.stepper).await;
+        gradual_shutdown(&mut self.stepper).await;
 
         self.device_state.current_position = position;
         self.device_state.is_moving = false;
@@ -172,7 +167,7 @@ where
     /// Emergency stop
     async fn emergency_stop(&mut self) -> Result<()> {
         // Directly disable motor in emergency
-        self.motor.disable();
+        self.stepper.disable_motor();
 
         // Update device status
         self.device_state.is_moving = false;
@@ -306,7 +301,7 @@ async fn await_stepper_completion<M: Motor>(stepper: &mut Stepper<M>) {
 }
 
 /// Implement graceful shutdown
-async fn gradual_shutdown<M: Motor>(stepper: &mut Stepper<M>, motor: &mut M) {
+async fn gradual_shutdown<M: Motor>(stepper: &mut Stepper<M>) {
     // First ensure the stepper motor has stopped
     while stepper.get_speed() != 0.0 {
         let current_time =
@@ -320,7 +315,7 @@ async fn gradual_shutdown<M: Motor>(stepper: &mut Stepper<M>, motor: &mut M) {
     Timer::after(Duration::from_millis(50)).await;
 
     // Finally safely disable the motor
-    motor.disable();
+    stepper.disable_motor();
 }
 
 #[cfg(test)]
@@ -432,8 +427,9 @@ mod tests {
     fn test_stepper_calculation_formula() {
         let transport = MockTransport::new();
         let motor = MockMotor::new();
+        let stepper = Stepper::new(motor);
         let device_mac = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
-        let mut communicator = DeviceCommunicator::new(transport, motor, device_mac, 1);
+        let mut communicator = DeviceCommunicator::new(transport, stepper, device_mac, 1);
 
         // Test formula: (position_change% * 180° * 200steps * 10gear) / 360°
         let test_cases = [
@@ -461,11 +457,16 @@ mod tests {
     async fn test_device_id_filtering() {
         let transport = MockTransport::new();
         let motor = MockMotor::new();
+        let mut stepper = Stepper::new(motor);
         let device_mac = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
         let device_id = 42;
         let edge_id = NodeId::Edge(1);
 
-        let mut communicator = DeviceCommunicator::new(transport, motor, device_mac, device_id);
+        stepper.set_max_speed(500.0);
+        stepper.set_acceleration(200.0);
+        stepper.set_current_position(0);
+
+        let mut communicator = DeviceCommunicator::new(transport, stepper, device_mac, device_id);
 
         // Test that wrong device IDs are ignored
         let wrong_ids = [41, 43, 0, 100, -1];
@@ -508,8 +509,9 @@ mod tests {
     fn test_battery_level_validation() {
         let transport = MockTransport::new();
         let motor = MockMotor::new();
+        let stepper = Stepper::new(motor);
         let device_mac = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
-        let mut communicator = DeviceCommunicator::new(transport, motor, device_mac, 1);
+        let mut communicator = DeviceCommunicator::new(transport, stepper, device_mac, 1);
 
         // Test automatic clamping of excessive values
         let invalid_values = [101, 150, 255, u8::MAX];
@@ -532,11 +534,12 @@ mod tests {
     async fn test_timestamp_monotonicity() {
         let transport = MockTransport::new();
         let motor = MockMotor::new();
+        let stepper = Stepper::new(motor);
         let device_mac = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
         let device_id = 1;
         let edge_id = NodeId::Edge(1);
 
-        let mut communicator = DeviceCommunicator::new(transport, motor, device_mac, device_id);
+        let mut communicator = DeviceCommunicator::new(transport, stepper, device_mac, device_id);
 
         // Rapidly send status requests to test timestamp ordering
         for _ in 0..10 {

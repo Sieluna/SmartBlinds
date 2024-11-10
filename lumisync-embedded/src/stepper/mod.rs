@@ -219,6 +219,14 @@ where
         self.move_to(self.current_position + relative);
     }
 
+    pub fn enable_motor(&mut self) {
+        self.motor.enable();
+    }
+
+    pub fn disable_motor(&mut self) {
+        self.motor.disable();
+    }
+
     pub fn run(&mut self, current_time: Duration) -> bool {
         if self.run_speed(current_time) {
             self.recalculate_speed();
