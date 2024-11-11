@@ -2,7 +2,7 @@ mod motor_2pin;
 mod motor_4pin;
 
 pub use motor_2pin::TwoPinMotor;
-pub use motor_4pin::FourPinMotor;
+pub use motor_4pin::{FourPinMotor, StepMode};
 
 use core::f32::consts::SQRT_2;
 use core::time::Duration;
