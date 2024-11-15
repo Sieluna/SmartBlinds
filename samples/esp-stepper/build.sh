@@ -3,7 +3,7 @@ set -euo pipefail
 
 BUILD_MODE="release"
 FLASH=false
-MODEL="esp32s3"
+MODEL="esp32"
 
 declare -A DEVICE_PROFILES=(
     ["esp32"]="esp:xtensa-esp32-none-elf:web-flash"
