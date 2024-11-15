@@ -1,6 +1,5 @@
-pub mod device;
-pub mod edge;
-pub mod transport;
+mod device;
+mod edge;
 
 use lumisync_api::Message;
 
@@ -17,4 +16,3 @@ pub trait MessageTransport {
 
 pub use device::{DeviceCommunicator, DeviceStatus};
 pub use edge::{EdgeAnalyzer, EdgeCommunicator};
-pub use transport::*;

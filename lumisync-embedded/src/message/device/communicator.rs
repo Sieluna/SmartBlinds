@@ -5,7 +5,7 @@ use lumisync_api::message::*;
 use lumisync_api::{Id, SensorData, SerializationProtocol};
 use time::OffsetDateTime;
 
-use crate::communication::MessageTransport;
+use crate::message::MessageTransport;
 use crate::protocol::message::MessageBuilder;
 use crate::protocol::uuid_generator::DeviceBasedUuidGenerator;
 use crate::stepper::{Motor, Stepper};

@@ -1,7 +1,7 @@
 use lumisync_api::{Message, Protocol, SerializationProtocol};
 
 use crate::Error;
-use crate::communication::MessageTransport;
+use crate::message::MessageTransport;
 
 use super::RawTransport;
 

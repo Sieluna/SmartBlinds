@@ -6,7 +6,7 @@ use lumisync_api::WindowData;
 use lumisync_api::message::*;
 use time::OffsetDateTime;
 
-use crate::communication::MessageTransport;
+use crate::message::MessageTransport;
 use crate::protocol::message::MessageBuilder;
 use crate::protocol::uuid_generator::DeviceBasedUuidGenerator;
 use crate::time::TimeSync;
