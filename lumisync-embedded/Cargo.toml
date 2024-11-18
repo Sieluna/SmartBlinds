@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 embassy-executor = { version = "0.6", features = ["executor-thread"] }
 embassy-futures = "0.1"
-embassy-net = { version = "0.4", features = ["tcp", "dhcpv4"], optional = true }
+embassy-net = { version = "0.4", features = ["dhcpv4"], optional = true }
 embassy-sync = { version = "0.6", optional = true }
 embassy-time = "0.3"
 embedded-hal = "1"

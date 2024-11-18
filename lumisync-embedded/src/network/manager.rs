@@ -131,6 +131,20 @@ impl<S: LocalStorage, W: WifiController> WifiManager<S, W> {
         self
     }
 
+    pub fn with_dhcp_buffers(
+        mut self,
+        rx_meta: &'static mut [embassy_net::udp::PacketMetadata],
+        rx_buffer: &'static mut [u8],
+        tx_meta: &'static mut [embassy_net::udp::PacketMetadata],
+        tx_buffer: &'static mut [u8],
+    ) -> Self {
+        self.dhcp_rx_meta = Some(rx_meta);
+        self.dhcp_rx_buffer = Some(rx_buffer);
+        self.dhcp_tx_meta = Some(tx_meta);
+        self.dhcp_tx_buffer = Some(tx_buffer);
+        self
+    }
+
     pub fn state(&self) -> &WifiState {
         &self.state
     }
