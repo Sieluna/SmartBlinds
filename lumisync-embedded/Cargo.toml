@@ -24,10 +24,11 @@ uuid.workspace = true
 
 [dev-dependencies]
 embassy-time = { version = "0.3", features = ["generic-queue-8"] }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 [features]
-default = ["std", "ble", "tcp"]
+default = ["std", "ble", "tcp", "udp"]
 std = ["embassy-executor/arch-std", "embassy-time/std", "serde/std", "time/std", "uuid/v4"]
 ble = ["dep:trouble-host", "dep:embassy-sync", "dep:static_cell"]
-tcp = ["dep:embassy-net", "dep:embedded-io-async"]
+tcp = ["dep:embassy-net", "embassy-net/tcp", "dep:embedded-io-async"]
+udp = ["dep:embassy-net", "embassy-net/udp"]
