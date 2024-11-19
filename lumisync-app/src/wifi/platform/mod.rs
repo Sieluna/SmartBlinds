@@ -4,6 +4,8 @@ mod win;
 #[cfg(target_os = "windows")]
 pub use win::Backend;
 
+use crate::error::Result;
+
 pub use super::*;
 
 #[async_trait::async_trait]

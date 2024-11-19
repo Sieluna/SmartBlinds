@@ -3,7 +3,9 @@ import { Router, Route } from '@solidjs/router';
 import { MainLayout } from './layouts/MainLayout.jsx';
 import { Debug } from './pages/Debug.jsx';
 import { Home } from './pages/Home.jsx';
-import { Wifi } from './pages/Wifi.jsx';
+import { Networks } from './pages/Networks.jsx';
+import { Devices } from './pages/Devices.jsx';
+import { Stepper } from './pages/Stepper.jsx';
 
 export function App() {
   return (
@@ -11,7 +13,9 @@ export function App() {
       <Router>
         <Route path="/" component={Home} />
         <Route path="/debug" component={Debug} />
-        <Route path="/wifi" component={Wifi} />
+        <Route path="/networks" component={Networks} />
+        <Route path="/devices" component={Devices} />
+        <Route path="/stepper" component={Stepper} />
       </Router>
     </MainLayout>
   );

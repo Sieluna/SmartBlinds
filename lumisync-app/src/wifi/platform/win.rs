@@ -11,6 +11,8 @@ use windows::Win32::Security::*;
 use windows::Win32::System::Threading::*;
 use windows::core::{GUID, PCWSTR, PWSTR};
 
+use crate::error::{Error, Result};
+
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,7 +89,7 @@ impl NotificationManager {
             unsafe {
                 let _ = Box::from_raw(context_ptr as *mut Arc<Mutex<VecDeque<WifiEvent>>>);
             }
-            return Err(WifiError::Backend(format!(
+            return Err(Error::wifi(format!(
                 "Failed to register notification: {}",
                 result
             )));
@@ -124,7 +126,7 @@ impl NotificationManager {
             std::thread::sleep(Duration::from_millis(50));
         }
 
-        Err(WifiError::Backend(format!(
+        Err(Error::connection(format!(
             "Timeout waiting for expected events: {expected:?}"
         )))
     }
@@ -202,7 +204,7 @@ impl Backend {
             unsafe { WlanOpenHandle(2, None, &mut negotiated_version, &mut client_handle) };
 
         if result != ERROR_SUCCESS.0 {
-            return Err(WifiError::Backend(format!(
+            return Err(Error::wifi(format!(
                 "Failed to open WiFi handle: {}",
                 result
             )));
@@ -218,7 +220,7 @@ impl Backend {
         let result = unsafe { WlanEnumInterfaces(client_handle, None, &mut interface_list) };
 
         if result != ERROR_SUCCESS.0 {
-            return Err(WifiError::Backend(format!(
+            return Err(Error::wifi(format!(
                 "Failed to enumerate wireless interfaces: {}",
                 result
             )));
@@ -226,15 +228,11 @@ impl Backend {
 
         let interface_guid = unsafe {
             if interface_list.is_null() {
-                return Err(WifiError::Backend(
-                    "Interface list is null pointer".to_string(),
-                ));
+                return Err(Error::wifi("Interface list is null pointer".to_string()));
             }
             if (*interface_list).dwNumberOfItems == 0 {
                 WlanFreeMemory(interface_list as *mut c_void);
-                return Err(WifiError::NotFound(
-                    "No wireless interfaces found".to_string(),
-                ));
+                return Err(Error::not_found("No wireless interfaces found".to_string()));
             }
 
             let interface_info = &(*interface_list).InterfaceInfo[0];
@@ -485,7 +483,7 @@ impl WifiBackend for Backend {
 
             let result = unsafe { WlanScan(handle, &interface, None, None, None) };
             if result != ERROR_SUCCESS.0 {
-                return Err(WifiError::Backend(format!("Scan failed: {}", result)));
+                return Err(Error::wifi(format!("Scan failed: {}", result)));
             }
 
             notification_mgr.wait_for_event(&[WifiEvent::ScanComplete], Duration::from_secs(10))?;
@@ -504,7 +502,7 @@ impl WifiBackend for Backend {
             };
 
             if result != ERROR_SUCCESS.0 {
-                return Err(WifiError::Backend(if result == 0x80070005 {
+                return Err(Error::wifi(if result == 0x80070005 {
                     "Access denied. Please enable location services on Windows 11".to_string()
                 } else {
                     format!("Failed to get network list: {}", result)
@@ -513,7 +511,7 @@ impl WifiBackend for Backend {
 
             let networks = unsafe {
                 if bss_list.is_null() {
-                    return Err(WifiError::Backend("BSS list is null pointer".to_string()));
+                    return Err(Error::wifi("BSS list is null pointer".to_string()));
                 }
                 let bss_count = (*bss_list).dwNumberOfItems as usize;
                 let bss_entries =
@@ -575,7 +573,7 @@ impl WifiBackend for Backend {
             Ok(networks)
         })
         .await
-        .map_err(|e| WifiError::Backend(format!("Scan operation failed: {}", e)))?
+        .map_err(|e| Error::wifi(format!("Scan operation failed: {}", e)))?
     }
 
     async fn connect(&self, creds: &Credentials) -> Result<ConnectionInfo> {
@@ -606,7 +604,7 @@ impl WifiBackend for Backend {
             };
 
             if result != ERROR_SUCCESS.0 {
-                return Err(WifiError::Backend(format!(
+                return Err(Error::wifi(format!(
                     "Failed to set profile: {} (reason: {})",
                     result, reason_code
                 )));
@@ -626,18 +624,18 @@ impl WifiBackend for Backend {
 
             let result = unsafe { WlanConnect(handle, &interface, &connection_params, None) };
             if result != ERROR_SUCCESS.0 {
-                return Err(WifiError::Connect(format!("Connection failed: {}", result)));
+                return Err(Error::connection(format!("Connection failed: {}", result)));
             }
 
             notification_mgr
                 .wait_for_event(&[WifiEvent::ConnectionComplete], Duration::from_secs(60))?;
 
             backend.current_connection_sync()?.ok_or_else(|| {
-                WifiError::Connect("Connected but unable to get connection info".to_string())
+                Error::connection("Connected but unable to get connection info".to_string())
             })
         })
         .await
-        .map_err(|e| WifiError::Backend(format!("Connect operation failed: {}", e)))?
+        .map_err(|e| Error::wifi(format!("Connect operation failed: {}", e)))?
     }
 
     async fn disconnect(&self) -> Result<()> {
@@ -651,14 +649,14 @@ impl WifiBackend for Backend {
 
             let result = unsafe { WlanDisconnect(handle, &interface, None) };
             if result != ERROR_SUCCESS.0 {
-                return Err(WifiError::Backend(format!("Disconnect failed: {}", result)));
+                return Err(Error::wifi(format!("Disconnect failed: {}", result)));
             }
 
             notification_mgr.wait_for_event(&[WifiEvent::Disconnected], Duration::from_secs(5))?;
             Ok(())
         })
         .await
-        .map_err(|e| WifiError::Backend(format!("Disconnect operation failed: {}", e)))?
+        .map_err(|e| Error::wifi(format!("Disconnect operation failed: {}", e)))?
     }
 
     async fn current_connection(&self) -> Result<Option<ConnectionInfo>> {
@@ -668,7 +666,7 @@ impl WifiBackend for Backend {
             backend.current_connection_sync()
         })
         .await
-        .map_err(|e| WifiError::Backend(format!("Current connection query failed: {}", e)))?
+        .map_err(|e| Error::wifi(format!("Current connection query failed: {}", e)))?
     }
 
     async fn get_profiles(&self) -> Result<Vec<Credentials>> {
@@ -683,7 +681,7 @@ impl WifiBackend for Backend {
             let result = unsafe { WlanGetProfileList(handle, &interface, None, &mut profile_list) };
 
             if result != ERROR_SUCCESS.0 {
-                return Err(WifiError::Backend(format!(
+                return Err(Error::wifi(format!(
                     "Failed to get profile list: {}",
                     result
                 )));
@@ -691,9 +689,7 @@ impl WifiBackend for Backend {
 
             let profiles = unsafe {
                 if profile_list.is_null() {
-                    return Err(WifiError::Backend(
-                        "Profile list is null pointer".to_string(),
-                    ));
+                    return Err(Error::wifi("Profile list is null pointer".to_string()));
                 }
                 let profile_count = (*profile_list).dwNumberOfItems as usize;
                 let profile_entries =
@@ -768,6 +764,6 @@ impl WifiBackend for Backend {
             Ok(profiles)
         })
         .await
-        .map_err(|e| WifiError::Backend(format!("Saved profiles query failed: {}", e)))?
+        .map_err(|e| Error::wifi(format!("Saved profiles query failed: {}", e)))?
     }
 }
