@@ -27,7 +27,7 @@ async fn test_device_setting_create() {
     .await;
 
     let create_device_request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -63,7 +63,7 @@ async fn test_device_setting_create() {
     });
 
     let create_setting_request = Request::builder()
-        .uri(&format!("/api/devices/{}/settings", device_id))
+        .uri(format!("/api/devices/{}/settings", device_id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -152,7 +152,7 @@ async fn test_device_setting_get_list() {
     .await;
 
     let get_settings_request = Request::builder()
-        .uri(&format!("/api/devices/{}/settings", device.id))
+        .uri(format!("/api/devices/{}/settings", device.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -218,7 +218,7 @@ async fn test_device_setting_get_by_id() {
     .await;
 
     let get_setting_request = Request::builder()
-        .uri(&format!("/api/devices/settings/{}", setting.id))
+        .uri(format!("/api/devices/settings/{}", setting.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -288,7 +288,7 @@ async fn test_device_setting_update() {
     });
 
     let update_setting_request = Request::builder()
-        .uri(&format!("/api/devices/settings/{}", setting.id))
+        .uri(format!("/api/devices/settings/{}", setting.id))
         .method(Method::PUT)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -361,7 +361,7 @@ async fn test_device_setting_delete() {
     .await;
 
     let delete_setting_request = Request::builder()
-        .uri(&format!("/api/devices/settings/{}", setting.id))
+        .uri(format!("/api/devices/settings/{}", setting.id))
         .method(Method::DELETE)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -377,7 +377,7 @@ async fn test_device_setting_delete() {
     assert_eq!(delete_setting_response.status(), StatusCode::NO_CONTENT);
 
     let verify_request = Request::builder()
-        .uri(&format!("/api/devices/settings/{}", setting.id))
+        .uri(format!("/api/devices/settings/{}", setting.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -421,7 +421,7 @@ async fn test_device_setting_validation() {
     });
 
     let invalid_time_request = Request::builder()
-        .uri(&format!("/api/devices/{}/settings", device.id))
+        .uri(format!("/api/devices/{}/settings", device.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -446,7 +446,7 @@ async fn test_device_setting_validation() {
     assert_eq!(invalid_time_response.status(), StatusCode::BAD_REQUEST);
 
     let invalid_format_request = Request::builder()
-        .uri(&format!("/api/devices/{}/settings", device.id))
+        .uri(format!("/api/devices/{}/settings", device.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))

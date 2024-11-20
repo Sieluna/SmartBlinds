@@ -16,7 +16,7 @@ async fn test_create_region() {
     create_test_user_group(app.storage.clone(), app.admin.id, group.id, true).await;
 
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}/regions", group.id))
+        .uri(format!("/api/groups/{}/regions", group.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -41,7 +41,7 @@ async fn test_create_region() {
 
     // Test duplicate name
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}/regions", group.id))
+        .uri(format!("/api/groups/{}/regions", group.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -74,7 +74,7 @@ async fn test_get_regions_by_group_id() {
     .await;
 
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}/regions", group.id))
+        .uri(format!("/api/groups/{}/regions", group.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -97,7 +97,7 @@ async fn test_get_regions_by_group_id() {
 
     // Test unauthorized access
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}/regions", group.id))
+        .uri(format!("/api/groups/{}/regions", group.id))
         .method(Method::GET)
         .header("Authorization", "Bearer invalid_token")
         .body(Body::empty())
@@ -124,7 +124,7 @@ async fn test_get_region_by_id() {
     .await;
 
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}", region.id))
+        .uri(format!("/api/regions/{}", region.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -171,7 +171,7 @@ async fn test_update_region() {
     .await;
 
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}", region.id))
+        .uri(format!("/api/regions/{}", region.id))
         .method(Method::PUT)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -212,7 +212,7 @@ async fn test_delete_region() {
     .await;
 
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}", region.id))
+        .uri(format!("/api/regions/{}", region.id))
         .method(Method::DELETE)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -223,7 +223,7 @@ async fn test_delete_region() {
 
     // Verify region was deleted
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}", region.id))
+        .uri(format!("/api/regions/{}", region.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -250,7 +250,7 @@ async fn test_update_region_environment() {
     .await;
 
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}/environment", region.id))
+        .uri(format!("/api/regions/{}/environment", region.id))
         .method(Method::PUT)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))

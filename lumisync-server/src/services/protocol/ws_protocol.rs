@@ -5,14 +5,15 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use async_trait::async_trait;
 use axum::Router;
-use axum::extract::{
-    State,
-    ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
-};
+use axum::extract::State;
+use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use futures::{SinkExt, StreamExt};
-use lumisync_api::{Message, Protocol, SerializationProtocol};
+use lumisync_api::{
+    Message,
+    transport::{Protocol, deserialize, serialize},
+};
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use uuid::Uuid;
@@ -30,7 +31,7 @@ pub struct WebSocketProtocol {
     /// Stop server sender
     stop_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     /// Serialization protocol
-    protocol: SerializationProtocol,
+    protocol: Protocol,
 }
 
 impl WebSocketProtocol {
@@ -41,17 +42,17 @@ impl WebSocketProtocol {
             clients: Arc::new(RwLock::new(HashMap::new())),
             app_tx: Arc::new(app_tx),
             stop_tx: Arc::new(Mutex::new(None)),
-            protocol: Default::default(),
+            protocol: Protocol::default(),
         }
     }
 
-    pub fn with_protocol(mut self, protocol: SerializationProtocol) -> Self {
+    pub fn with_protocol(mut self, protocol: Protocol) -> Self {
         self.protocol = protocol;
         self
     }
 
-    pub fn protocol(&self) -> &SerializationProtocol {
-        &self.protocol
+    pub fn protocol(&self) -> Protocol {
+        self.protocol
     }
 
     async fn handle_socket(
@@ -59,7 +60,7 @@ impl WebSocketProtocol {
         client_id: String,
         clients: Arc<RwLock<HashMap<String, mpsc::Sender<WsMessage>>>>,
         app_tx: Arc<broadcast::Sender<Message>>,
-        protocol: SerializationProtocol,
+        protocol: Protocol,
     ) {
         let (mut sender, mut receiver) = socket.split();
 
@@ -93,16 +94,39 @@ impl WebSocketProtocol {
         let client_id_for_broadcast = client_id.clone();
         let broadcast_task = tokio::spawn(async move {
             while let Ok(app_msg) = app_rx.recv().await {
-                let json = match serde_json::to_string(&app_msg) {
-                    Ok(json) => json,
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to serialize message for client {}: {:?}",
-                            client_id_for_broadcast,
-                            e
-                        );
-                        continue;
-                    }
+                // Use new serialization API consistently
+                let message_data = match protocol {
+                    Protocol::Json => match serialize(Protocol::Json, &app_msg) {
+                        Ok(data) => match String::from_utf8(data) {
+                            Ok(json_str) => WsMessage::Text(json_str),
+                            Err(_) => {
+                                tracing::error!(
+                                    "Failed to convert JSON bytes to string for client {}",
+                                    client_id_for_broadcast
+                                );
+                                continue;
+                            }
+                        },
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to serialize JSON message for client {}: {:?}",
+                                client_id_for_broadcast,
+                                e
+                            );
+                            continue;
+                        }
+                    },
+                    Protocol::Postcard => match serialize(Protocol::Postcard, &app_msg) {
+                        Ok(data) => WsMessage::Binary(data),
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to serialize binary message for client {}: {:?}",
+                                client_id_for_broadcast,
+                                e
+                            );
+                            continue;
+                        }
+                    },
                 };
 
                 let tx = {
@@ -111,7 +135,7 @@ impl WebSocketProtocol {
                 };
 
                 if let Some(tx) = tx {
-                    if let Err(e) = tx.send(WsMessage::Text(json)).await {
+                    if let Err(e) = tx.send(message_data).await {
                         tracing::warn!(
                             "Failed to send broadcast message to client {}: {:?}",
                             client_id_for_broadcast,
@@ -122,13 +146,12 @@ impl WebSocketProtocol {
             }
         });
 
-        let protocol_for_receiver = protocol.clone();
         while let Some(result) = receiver.next().await {
             match result {
                 Ok(msg) => match msg {
                     WsMessage::Text(text) => {
-                        let app_msg: Result<Message, _> = serde_json::from_str(&text);
-                        match app_msg {
+                        // Try to deserialize as JSON first
+                        match deserialize::<Message>(Protocol::Json, text.as_bytes()) {
                             Ok(app_msg) => {
                                 if let Err(e) = app_tx.send(app_msg) {
                                     tracing::warn!(
@@ -140,7 +163,7 @@ impl WebSocketProtocol {
                             }
                             Err(e) => {
                                 tracing::warn!(
-                                    "Received invalid JSON message from client {}: {}",
+                                    "Failed to deserialize text message from client {}: {:?}",
                                     client_id,
                                     e
                                 );
@@ -148,8 +171,8 @@ impl WebSocketProtocol {
                         }
                     }
                     WsMessage::Binary(bin) => {
-                        let app_msg = protocol_for_receiver.deserialize::<Message>(&bin);
-                        match app_msg {
+                        // Use configured protocol for binary messages
+                        match deserialize::<Message>(protocol, &bin) {
                             Ok(app_msg) => {
                                 if let Err(e) = app_tx.send(app_msg) {
                                     tracing::warn!(
@@ -161,7 +184,7 @@ impl WebSocketProtocol {
                             }
                             Err(e) => {
                                 tracing::warn!(
-                                    "Received invalid binary message from client {}: {:?}",
+                                    "Failed to deserialize binary message from client {}: {:?}",
                                     client_id,
                                     e
                                 );
@@ -219,14 +242,13 @@ impl WebSocketProtocol {
         State((clients, app_tx, protocol)): State<(
             Arc<RwLock<HashMap<String, mpsc::Sender<WsMessage>>>>,
             Arc<broadcast::Sender<Message>>,
-            SerializationProtocol,
+            Protocol,
         )>,
     ) -> impl IntoResponse {
         let client_id = Uuid::new_v4().to_string();
         let clients_clone = clients.clone();
         let app_tx_clone = app_tx.clone();
         let client_id_clone = client_id.clone();
-        let protocol_clone = protocol.clone();
 
         ws.on_upgrade(move |socket| {
             Self::handle_socket(
@@ -234,7 +256,7 @@ impl WebSocketProtocol {
                 client_id_clone,
                 clients_clone,
                 app_tx_clone,
-                protocol_clone,
+                protocol,
             )
         })
     }
@@ -249,20 +271,16 @@ impl MessageProtocol for WebSocketProtocol {
     async fn start(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         let app = Router::new()
             .route("/ws", get(Self::ws_handler))
-            .with_state((
-                self.clients.clone(),
-                self.app_tx.clone(),
-                self.protocol.clone(),
-            ));
+            .with_state((self.clients.clone(), self.app_tx.clone(), self.protocol));
 
         let listener = TcpListener::bind(&self.addr).await.map_err(|e| {
             tracing::error!("Failed to bind WebSocket server to {}: {}", self.addr, e);
             Box::new(e) as Box<dyn Error + Send + Sync>
         })?;
         tracing::info!(
-            "WebSocket server listening on {} with {} protocol",
+            "WebSocket server listening on {} with {:?} protocol",
             self.addr,
-            self.protocol.name()
+            self.protocol
         );
 
         let (stop_tx, stop_rx) = oneshot::channel();

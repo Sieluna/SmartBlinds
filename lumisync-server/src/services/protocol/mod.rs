@@ -104,3 +104,9 @@ impl ProtocolManager {
         Ok(())
     }
 }
+
+impl Default for ProtocolManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}

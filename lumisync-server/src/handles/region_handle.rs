@@ -467,8 +467,7 @@ pub async fn update_region_environment(
         .unwrap_or(region.humidity);
 
     // Validate environment data
-    if light < 0 || temperature < -50.0 || temperature > 100.0 || humidity < 0.0 || humidity > 100.0
-    {
+    if light < 0 || !(-50.0..=100.0).contains(&temperature) || !(0.0..=100.0).contains(&humidity) {
         return Err(RegionError::InvalidEnvironmentData.into());
     }
 

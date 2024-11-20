@@ -286,21 +286,19 @@ pub async fn get_device_by_id(
             } else {
                 return Err(DeviceError::InvalidDeviceSetting.into());
             }
+        } else if let Ok(sensor_data) =
+            serde_json::from_value::<SensorSettingData>(device_setting.setting.clone())
+        {
+            let setting_response = SettingResponse {
+                id: device_setting.id,
+                target_id: device_setting.device_id,
+                data: sensor_data,
+                start_time: device_setting.start,
+                end_time: device_setting.end,
+            };
+            settings.push(DeviceSettingUnion::Sensor(setting_response));
         } else {
-            if let Ok(sensor_data) =
-                serde_json::from_value::<SensorSettingData>(device_setting.setting.clone())
-            {
-                let setting_response = SettingResponse {
-                    id: device_setting.id,
-                    target_id: device_setting.device_id,
-                    data: sensor_data,
-                    start_time: device_setting.start,
-                    end_time: device_setting.end,
-                };
-                settings.push(DeviceSettingUnion::Sensor(setting_response));
-            } else {
-                return Err(DeviceError::InvalidDeviceSetting.into());
-            }
+            return Err(DeviceError::InvalidDeviceSetting.into());
         }
     }
 
@@ -528,13 +526,12 @@ pub async fn update_device_status(
         .ok_or(DeviceError::DeviceNotFound)?;
 
     // Validate status data format based on device type
-    if device.device_type == DeviceType::Window.to_string() {
-        if !status.is_object()
-            || !status.get("position").is_some()
-            || !status.get("position").unwrap().is_number()
-        {
-            return Err(DeviceError::InvalidDeviceStatus.into());
-        }
+    if device.device_type == DeviceType::Window.to_string()
+        && (!status.is_object()
+            || status.get("position").is_none()
+            || !status.get("position").unwrap().is_number())
+    {
+        return Err(DeviceError::InvalidDeviceStatus.into());
     }
 
     // Check if user has permission to control the device

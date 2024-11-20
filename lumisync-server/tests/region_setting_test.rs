@@ -36,7 +36,7 @@ async fn test_region_setting_create() {
     };
 
     let create_setting_request = Request::builder()
-        .uri(&format!("/api/regions/{}/settings", region.id))
+        .uri(format!("/api/regions/{}/settings", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -116,7 +116,7 @@ async fn test_region_setting_get_list() {
     .await;
 
     let get_settings_request = Request::builder()
-        .uri(&format!("/api/regions/{}/settings", region.id))
+        .uri(format!("/api/regions/{}/settings", region.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -173,7 +173,7 @@ async fn test_region_setting_get_by_id() {
     .await;
 
     let get_setting_request = Request::builder()
-        .uri(&format!("/api/regions/settings/{}", setting.id))
+        .uri(format!("/api/regions/settings/{}", setting.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -235,7 +235,7 @@ async fn test_region_setting_update() {
     };
 
     let update_setting_request = Request::builder()
-        .uri(&format!("/api/regions/settings/{}", setting.id))
+        .uri(format!("/api/regions/settings/{}", setting.id))
         .method(Method::PUT)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -301,7 +301,7 @@ async fn test_region_setting_delete() {
     .await;
 
     let delete_setting_request = Request::builder()
-        .uri(&format!("/api/regions/settings/{}", setting.id))
+        .uri(format!("/api/regions/settings/{}", setting.id))
         .method(Method::DELETE)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -317,7 +317,7 @@ async fn test_region_setting_delete() {
     assert_eq!(delete_setting_response.status(), StatusCode::NO_CONTENT);
 
     let verify_request = Request::builder()
-        .uri(&format!("/api/regions/settings/{}", setting.id))
+        .uri(format!("/api/regions/settings/{}", setting.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -354,7 +354,7 @@ async fn test_region_setting_validation() {
     };
 
     let invalid_light_request = Request::builder()
-        .uri(&format!("/api/regions/{}/settings", region.id))
+        .uri(format!("/api/regions/{}/settings", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -385,7 +385,7 @@ async fn test_region_setting_validation() {
     };
 
     let invalid_temp_request = Request::builder()
-        .uri(&format!("/api/regions/{}/settings", region.id))
+        .uri(format!("/api/regions/{}/settings", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -416,7 +416,7 @@ async fn test_region_setting_validation() {
     };
 
     let invalid_time_request = Request::builder()
-        .uri(&format!("/api/regions/{}/settings", region.id))
+        .uri(format!("/api/regions/{}/settings", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))

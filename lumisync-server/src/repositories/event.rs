@@ -171,7 +171,7 @@ mod tests {
 
         if let Some(payload) = found_event.payload.as_object() {
             assert_eq!(payload.get("temperature").unwrap().as_f64().unwrap(), 23.5);
-            assert_eq!(payload.get("updated").unwrap().as_bool().unwrap(), true);
+            assert!(payload.get("updated").unwrap().as_bool().unwrap());
         } else {
             panic!("Payload is not an object");
         }

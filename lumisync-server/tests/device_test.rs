@@ -26,7 +26,7 @@ async fn test_create_device() {
     .await;
 
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -56,7 +56,7 @@ async fn test_create_device() {
 
     // Test duplicate name
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -93,7 +93,7 @@ async fn test_get_devices_by_region_id() {
 
     // Create test device
     let create_device_request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -117,7 +117,7 @@ async fn test_get_devices_by_region_id() {
 
     // Test getting device list
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -140,7 +140,7 @@ async fn test_get_devices_by_region_id() {
 
     // Test unauthorized access
     let request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::GET)
         .header("Authorization", "Bearer invalid_token")
         .body(Body::empty())
@@ -168,7 +168,7 @@ async fn test_get_device_by_id() {
 
     // Create test device
     let create_device_request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -197,7 +197,7 @@ async fn test_get_device_by_id() {
 
     // Test getting device details
     let request = Request::builder()
-        .uri(&format!("/api/devices/{}", device_id))
+        .uri(format!("/api/devices/{}", device_id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -246,7 +246,7 @@ async fn test_update_device() {
 
     // Create test device
     let create_device_request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -275,7 +275,7 @@ async fn test_update_device() {
 
     // Test updating device
     let request = Request::builder()
-        .uri(&format!("/api/devices/{}", device_id))
+        .uri(format!("/api/devices/{}", device_id))
         .method(Method::PUT)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -320,7 +320,7 @@ async fn test_delete_device() {
 
     // Create test device
     let create_device_request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -349,7 +349,7 @@ async fn test_delete_device() {
 
     // Test deleting device
     let request = Request::builder()
-        .uri(&format!("/api/devices/{}", device_id))
+        .uri(format!("/api/devices/{}", device_id))
         .method(Method::DELETE)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -360,7 +360,7 @@ async fn test_delete_device() {
 
     // Verify device was deleted
     let request = Request::builder()
-        .uri(&format!("/api/devices/{}", device_id))
+        .uri(format!("/api/devices/{}", device_id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -388,7 +388,7 @@ async fn test_update_device_status() {
 
     // Create test device
     let create_device_request = Request::builder()
-        .uri(&format!("/api/regions/{}/devices", region.id))
+        .uri(format!("/api/regions/{}/devices", region.id))
         .method(Method::POST)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -417,7 +417,7 @@ async fn test_update_device_status() {
 
     // Test updating device status
     let request = Request::builder()
-        .uri(&format!("/api/devices/{}/status", device_id))
+        .uri(format!("/api/devices/{}/status", device_id))
         .method(Method::PUT)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -446,7 +446,7 @@ async fn test_update_device_status() {
 
     // Get device to verify status was updated
     let request = Request::builder()
-        .uri(&format!("/api/devices/{}", device_id))
+        .uri(format!("/api/devices/{}", device_id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())

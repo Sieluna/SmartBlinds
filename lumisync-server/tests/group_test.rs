@@ -100,7 +100,7 @@ async fn test_get_group_by_id() {
     create_test_user_group(app.storage.clone(), app.admin.id, group.id, true).await;
 
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}", group.id))
+        .uri(format!("/api/groups/{}", group.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -133,7 +133,7 @@ async fn test_update_group() {
     create_test_user_group(app.storage.clone(), app.admin.id, group.id, true).await;
 
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}", group.id))
+        .uri(format!("/api/groups/{}", group.id))
         .method(Method::PUT)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", app.token))
@@ -170,7 +170,7 @@ async fn test_delete_group() {
     create_test_user_group(app.storage.clone(), app.admin.id, group.id, true).await;
 
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}", group.id))
+        .uri(format!("/api/groups/{}", group.id))
         .method(Method::DELETE)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -180,7 +180,7 @@ async fn test_delete_group() {
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}", group.id))
+        .uri(format!("/api/groups/{}", group.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -198,7 +198,7 @@ async fn test_get_group_users() {
 
     // Test successful retrieval of group users
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}/users", group.id))
+        .uri(format!("/api/groups/{}/users", group.id))
         .method(Method::GET)
         .header("Authorization", format!("Bearer {}", app.token))
         .body(Body::empty())
@@ -228,7 +228,7 @@ async fn test_get_group_users() {
 
     // Test with invalid token
     let request = Request::builder()
-        .uri(&format!("/api/groups/{}/users", group.id))
+        .uri(format!("/api/groups/{}/users", group.id))
         .method(Method::GET)
         .header("Authorization", "Bearer invalid_token")
         .body(Body::empty())

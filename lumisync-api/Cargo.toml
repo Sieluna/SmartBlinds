@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+embedded-io = { version = "0.6", features = ["alloc"] }
+embedded-io-async = { version = "0.6", features = ["alloc"] }
 postcard = { version = "1", features = ["alloc"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["alloc"] }
@@ -11,7 +13,10 @@ time = { workspace = true, features = ["serde"] }
 utoipa = { workspace = true, features = ["macros", "time"], optional = true }
 uuid = { workspace = true, features = ["serde"] }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+
 [features]
 default = ["std"]
-std = ["serde/std", "serde_json/std", "time/std"]
+std = ["embedded-io/std", "embedded-io-async/std", "serde/std", "serde_json/std", "time/std"]
 docs = ["dep:utoipa", "std"]

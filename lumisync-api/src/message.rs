@@ -254,7 +254,7 @@ pub enum ErrorCode {
 mod tests {
     use alloc::vec;
 
-    use crate::protocols::{JsonProtocol, PostcardProtocol, Protocol, SerializationProtocol};
+    use crate::transport::{Protocol, deserialize, serialize};
 
     use super::*;
 
@@ -372,8 +372,6 @@ mod tests {
 
     #[test]
     fn test_message_sizes() {
-        let protocol = SerializationProtocol::default();
-
         let samples = vec![
             ("Device Status", create_device_status_message()),
             ("Edge Control", create_edge_command_message()),
@@ -384,7 +382,7 @@ mod tests {
         ];
 
         for (name, msg) in samples {
-            let serialized = protocol.serialize(&msg).expect("Serialization failed");
+            let serialized = serialize(Protocol::Postcard, &msg).expect("Serialization failed");
             let size = serialized.len();
             // Assert BLE MTU limit (<=244 bytes after which fragmentation needed)
             assert!(
@@ -398,10 +396,7 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip() {
-        let protocols: Vec<SerializationProtocol> = vec![
-            SerializationProtocol::Postcard(PostcardProtocol::default()),
-            SerializationProtocol::Json(JsonProtocol::default()),
-        ];
+        let protocols = vec![Protocol::Postcard, Protocol::Json];
 
         let samples: Vec<Message> = vec![
             create_device_status_message(),
@@ -414,8 +409,8 @@ mod tests {
 
         for protocol in &protocols {
             for original in &samples {
-                let bytes = protocol.serialize(original).expect("serialize failed");
-                let decoded: Message = protocol.deserialize(&bytes).expect("deserialize failed");
+                let bytes = serialize(*protocol, original).expect("serialize failed");
+                let decoded: Message = deserialize(*protocol, &bytes).expect("deserialize failed");
                 assert_eq!(original.header.id, decoded.header.id);
             }
         }
