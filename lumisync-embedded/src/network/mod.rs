@@ -2,13 +2,11 @@
 mod dhcp;
 #[cfg(all(feature = "tcp", feature = "udp"))]
 mod manager;
-mod transport;
 
 #[cfg(feature = "udp")]
 pub use dhcp::*;
 #[cfg(all(feature = "tcp", feature = "udp"))]
 pub use manager::*;
-pub use transport::*;
 
 use serde::{Deserialize, Serialize};
 

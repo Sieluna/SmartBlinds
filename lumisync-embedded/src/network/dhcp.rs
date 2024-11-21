@@ -7,9 +7,8 @@ use embassy_net::udp::PacketMetadata;
 use embassy_net::{IpEndpoint, Stack};
 use embassy_time::{Duration, Instant};
 
+use crate::transport::UdpTransport;
 use crate::{Error, Result};
-
-use super::transport::UdpTransport;
 
 const DHCP_SERVER_PORT: u16 = 67;
 const DHCP_CLIENT_PORT: u16 = 68;

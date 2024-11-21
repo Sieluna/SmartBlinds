@@ -1,48 +1,58 @@
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 
-use lumisync_api::SerializationProtocol;
-use lumisync_api::WindowData;
+use embedded_io_async::{ErrorType, Read, Write};
 use lumisync_api::message::*;
+use lumisync_api::transport::{AsyncMessageTransport, TransportError};
+use lumisync_api::{Protocol, WindowData};
 use time::OffsetDateTime;
 
-use crate::message::MessageTransport;
 use crate::protocol::message::MessageBuilder;
 use crate::protocol::uuid_generator::DeviceBasedUuidGenerator;
 use crate::time::TimeSync;
 use crate::{Error, Result};
 
-pub struct EdgeCommunicator<T, B>
+pub struct EdgeCommunicator<TcpIo, BleIo>
 where
-    T: MessageTransport,
-    B: MessageTransport,
+    TcpIo: Read + Write + ErrorType + Unpin,
+    TcpIo::Error: core::fmt::Debug,
+    BleIo: Read + Write + ErrorType + Unpin,
+    BleIo::Error: core::fmt::Debug,
 {
     /// TCP transport layer (for communicating with cloud server)
-    tcp_transport: T,
+    tcp_transport: AsyncMessageTransport<TcpIo>,
     /// BLE transport layer (for communicating with devices)
-    ble_transport: B,
+    ble_transport: AsyncMessageTransport<BleIo>,
     /// Message builder
     message_builder: MessageBuilder,
     /// Time synchronization manager
     time_sync: TimeSync,
 }
 
-impl<T, B> EdgeCommunicator<T, B>
+impl<TcpIo, BleIo> EdgeCommunicator<TcpIo, BleIo>
 where
-    T: MessageTransport,
-    B: MessageTransport,
+    TcpIo: Read + Write + ErrorType + Unpin,
+    TcpIo::Error: core::fmt::Debug,
+    BleIo: Read + Write + ErrorType + Unpin,
+    BleIo::Error: core::fmt::Debug,
 {
-    pub fn new(tcp_transport: T, ble_transport: B, edge_id: u8) -> Self {
-        let node_id = NodeId::Edge(edge_id);
+    pub fn new(tcp_io: TcpIo, ble_io: BleIo, edge_id: u8) -> Self {
+        let tcp_transport = AsyncMessageTransport::new(tcp_io)
+            .with_default_protocol(Protocol::Postcard)
+            .with_crc(true);
 
-        // Generate device MAC based on edge_id for UUID generation
+        let ble_transport = AsyncMessageTransport::new(ble_io)
+            .with_default_protocol(Protocol::Postcard)
+            .with_crc(true);
+
+        let node_id = NodeId::Edge(edge_id);
         let device_mac = [0xED, 0xED, 0x00, 0xDE, 0xDE, edge_id];
         let uuid_generator = Arc::new(DeviceBasedUuidGenerator::new(device_mac, edge_id as u32));
 
         Self {
             tcp_transport,
             ble_transport,
-            message_builder: MessageBuilder::new(SerializationProtocol::default(), uuid_generator)
+            message_builder: MessageBuilder::new(Protocol::default(), uuid_generator)
                 .with_node_id(node_id),
             time_sync: TimeSync::new(),
         }
@@ -50,15 +60,19 @@ where
 
     /// Handle messages from cloud server
     pub async fn handle_cloud_message(&mut self) -> Result<()> {
-        if let Ok(Some(message)) = self.tcp_transport.receive_message().await {
-            match &message.payload {
+        match self
+            .tcp_transport
+            .receive_message::<lumisync_api::Message>()
+            .await
+        {
+            Ok((message, _, _)) => match &message.payload {
                 MessagePayload::CloudCommand(cloud_cmd) => {
-                    self.process_cloud_command(cloud_cmd).await?;
+                    self.process_cloud_command(&cloud_cmd).await?;
                 }
-                _ => {
-                    // Ignore other message types
-                }
-            }
+                _ => {}
+            },
+            Err(TransportError::Io(_)) => {}
+            Err(_) => return Err(Error::SerializationError),
         }
         Ok(())
     }
@@ -73,7 +87,7 @@ where
                 self.distribute_device_commands(commands).await?;
             }
             CloudCommand::ConfigureWindow { window_id, plan: _ } => {
-                let position = 50; // Default position
+                let position = 50;
                 self.send_window_command(*window_id, position).await?;
             }
             CloudCommand::TimeSync { cloud_time } => {
@@ -96,9 +110,7 @@ where
                     self.send_window_command(*device_id, data.target_position)
                         .await?;
                 }
-                _ => {
-                    // Other command types not handled yet
-                }
+                _ => {}
             }
         }
         Ok(())
@@ -110,20 +122,19 @@ where
         device_id: lumisync_api::Id,
         position: u8,
     ) -> Result<()> {
-        // Create device MAC address (simplified implementation)
         let device_mac = self.device_id_to_mac(device_id);
         let target_node = NodeId::Device(device_mac);
 
         let message = self.message_builder.create_actuator_command(
             target_node,
             device_id,
-            1, // sequence
+            1,
             ActuatorCommand::SetWindowPosition(position),
             OffsetDateTime::UNIX_EPOCH,
         );
 
         self.ble_transport
-            .send_message(&message)
+            .send_message(&message, None, None)
             .await
             .map_err(|_| Error::NetworkError)?;
 
@@ -132,7 +143,7 @@ where
 
     /// Simplified device ID to MAC address conversion
     fn device_id_to_mac(&self, device_id: lumisync_api::Id) -> [u8; 6] {
-        let device_id = device_id.unsigned_abs(); // Ensure positive number
+        let device_id = device_id.unsigned_abs();
         [
             0x12,
             0x34,
@@ -157,13 +168,13 @@ where
                 target_position: position,
             },
             battery,
-            0, // error_code
+            0,
             self.time_sync.uptime_ms(),
             OffsetDateTime::UNIX_EPOCH,
         );
 
         self.tcp_transport
-            .send_message(&message)
+            .send_message(&message, None, None)
             .await
             .map_err(|_| Error::NetworkError)?;
 
@@ -172,20 +183,24 @@ where
 
     /// Handle messages from devices (BLE)
     pub async fn handle_device_message(&mut self) -> Result<()> {
-        if let Ok(Some(message)) = self.ble_transport.receive_message().await {
-            match &message.payload {
+        match self
+            .ble_transport
+            .receive_message::<lumisync_api::Message>()
+            .await
+        {
+            Ok((message, _, _)) => match &message.payload {
                 MessagePayload::DeviceReport(device_report) => {
-                    self.process_device_report(device_report).await?;
+                    self.process_device_report(&device_report).await?;
                 }
-                _ => {
-                    // Ignore other message types
-                }
-            }
+                _ => {}
+            },
+            Err(TransportError::Io(_)) => {}
+            Err(_) => return Err(Error::SerializationError),
         }
         Ok(())
     }
 
-    /// Process device reports with timestamp conversion
+    /// Process device reports
     async fn process_device_report(&mut self, report: &lumisync_api::DeviceReport) -> Result<()> {
         match report {
             DeviceReport::Status {
@@ -196,7 +211,6 @@ where
                 relative_timestamp,
             } => {
                 let utc_timestamp = self.time_sync.uptime_to_utc(*relative_timestamp);
-
                 let message = self.message_builder.create_device_status(
                     NodeId::Cloud,
                     *actuator_id,
@@ -208,7 +222,7 @@ where
                 );
 
                 self.tcp_transport
-                    .send_message(&message)
+                    .send_message(&message, None, None)
                     .await
                     .map_err(|_| Error::NetworkError)?;
             }
@@ -218,7 +232,6 @@ where
                 relative_timestamp,
             } => {
                 let utc_timestamp = self.time_sync.uptime_to_utc(*relative_timestamp);
-
                 let message = self.message_builder.create_sensor_data(
                     NodeId::Cloud,
                     *actuator_id,
@@ -228,7 +241,7 @@ where
                 );
 
                 self.tcp_transport
-                    .send_message(&message)
+                    .send_message(&message, None, None)
                     .await
                     .map_err(|_| Error::NetworkError)?;
             }
@@ -241,7 +254,6 @@ where
                 relative_timestamp,
             } => {
                 let utc_timestamp = self.time_sync.uptime_to_utc(*relative_timestamp);
-
                 let message = self.message_builder.create_health_status(
                     NodeId::Cloud,
                     *device_id,
@@ -254,7 +266,7 @@ where
                 );
 
                 self.tcp_transport
-                    .send_message(&message)
+                    .send_message(&message, None, None)
                     .await
                     .map_err(|_| Error::NetworkError)?;
             }
@@ -272,7 +284,7 @@ where
         );
 
         self.tcp_transport
-            .send_message(&message)
+            .send_message(&message, None, None)
             .await
             .map_err(|_| Error::NetworkError)?;
         Ok(())

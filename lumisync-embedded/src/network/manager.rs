@@ -9,12 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 use crate::storage::LocalStorage;
+use crate::transport::{AsyncMessageTransport, RawTransport, TcpTransport};
 
-use super::{
-    FramedTcpTransport, FramedTransport, RawTransport, TcpTransport, WifiController,
-    WifiEncryption,
-    dhcp::{DhcpConfig, DhcpServer},
-};
+use super::dhcp::{DhcpConfig, DhcpServer};
+use super::{WifiController, WifiEncryption};
 
 const CONFIG_KEY: &str = "wifi_config";
 const DEFAULT_CONFIG_TIMEOUT: Duration = Duration::from_secs(300);
@@ -51,7 +49,7 @@ pub struct WifiManager<S: LocalStorage, W: WifiController> {
     state: WifiState,
     storage: S,
     wifi_controller: W,
-    config_server: Option<FramedTcpTransport>,
+    config_server: Option<AsyncMessageTransport<TcpTransport>>,
     ap_ssid: String,
     ap_password: String,
     max_attempts: u8,
@@ -441,7 +439,7 @@ impl<S: LocalStorage, W: WifiController> WifiManager<S, W> {
             self.tcp_tx_buffer.take(),
         ) {
             let tcp_transport = TcpTransport::new(stack.clone(), rx_buffer, tx_buffer);
-            let framed = FramedTransport::new(tcp_transport);
+            let framed = AsyncMessageTransport::new(tcp_transport);
             self.config_server = Some(framed);
 
             if let Some(ref mut server) = self.config_server {
@@ -462,14 +460,21 @@ impl<S: LocalStorage, W: WifiController> WifiManager<S, W> {
 
     async fn poll_config_server(&mut self) -> Result<(), Error> {
         if let Some(server) = self.config_server.as_mut() {
-            if server.inner().is_connected() {
-                let mut buffer = [0u8; 512];
-                if let Some(len) = server.receive_bytes(&mut buffer).await? {
-                    if let Ok(message) = Self::parse_config_message(&buffer[..len]) {
-                        let mut temp_server = self.config_server.take().unwrap();
-                        self.handle_config_message(message, &mut temp_server)
-                            .await?;
-                        self.config_server = Some(temp_server);
+            let mut buffer = [0u8; 512];
+            if let Ok(Some(n)) = server.inner_mut().receive_bytes(&mut buffer).await {
+                if n > 0 {
+                    if let Ok(message) = Self::parse_config_message(&buffer[..n]) {
+                        let response = match message {
+                            ConfigMessage::GetConfig => ConfigMessage::ConfigAck,
+                            ConfigMessage::SetConfig(config) => {
+                                self.received_config = Some(config);
+                                ConfigMessage::ConfigAck
+                            }
+                            _ => return Ok(()),
+                        };
+
+                        let response_data = Self::serialize_config_message(&response);
+                        let _ = server.inner_mut().send_bytes(&response_data).await;
                     }
                 }
             }
@@ -525,40 +530,6 @@ impl<S: LocalStorage, W: WifiController> WifiManager<S, W> {
             ConfigMessage::ConfigAck => b"CONFIG_ACK".to_vec(),
             ConfigMessage::Error(msg) => alloc::format!("ERROR|{}", msg).into_bytes(),
         }
-    }
-
-    async fn handle_config_message(
-        &mut self,
-        message: ConfigMessage,
-        server: &mut FramedTcpTransport,
-    ) -> Result<(), Error> {
-        match message {
-            ConfigMessage::GetConfig => {
-                server
-                    .send_bytes(&Self::serialize_config_message(&ConfigMessage::ConfigAck))
-                    .await?;
-                log::info!("Received config request, sent ACK");
-            }
-            ConfigMessage::SetConfig(config) => {
-                let enc_type = match config.encryption {
-                    WifiEncryption::None => "Open",
-                    WifiEncryption::WEP => "WEP",
-                    WifiEncryption::WPA => "WPA",
-                    WifiEncryption::WPA2 => "WPA2",
-                    WifiEncryption::WPA3 => "WPA3",
-                };
-                log::info!("Received WiFi config: {} ({})", config.ssid, enc_type);
-
-                self.received_config = Some(config);
-                server
-                    .send_bytes(&Self::serialize_config_message(&ConfigMessage::ConfigAck))
-                    .await?;
-                log::info!("Config received, sent ACK");
-            }
-            _ => {}
-        }
-
-        Ok(())
     }
 
     pub fn provide_config(&mut self, config: WifiConfig) {

@@ -1,18 +1,25 @@
-mod device;
-mod edge;
+pub mod device;
+pub mod edge;
 
-use lumisync_api::Message;
+pub use device::DeviceCommunicator;
+pub use edge::EdgeCommunicator;
 
-#[allow(async_fn_in_trait)]
-pub trait MessageTransport {
-    type Error;
+pub type BleDeviceCommunicator<M> = DeviceCommunicator<crate::transport::BlePeripheralTransport, M>;
+pub type TcpEdgeCommunicator<B> = EdgeCommunicator<crate::transport::TcpTransport, B>;
 
-    /// Send message
-    async fn send_message(&mut self, message: &Message) -> Result<(), Self::Error>;
+/// Get device MAC address with collision-resistant implementation
+pub fn get_device_mac(device_id: i32) -> [u8; 6] {
+    let hash = device_id
+        .unsigned_abs()
+        .wrapping_mul(0x9E3779B9)
+        .wrapping_add(0x85EBCA6B);
 
-    /// Receive message
-    async fn receive_message(&mut self) -> Result<Option<Message>, Self::Error>;
+    [
+        0x12,
+        0x34,
+        0x56,
+        (hash >> 16) as u8,
+        (hash >> 8) as u8,
+        hash as u8,
+    ]
 }
-
-pub use device::{DeviceCommunicator, DeviceStatus};
-pub use edge::{EdgeAnalyzer, EdgeCommunicator};

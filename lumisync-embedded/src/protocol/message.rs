@@ -2,8 +2,8 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use lumisync_api::message::*;
-use lumisync_api::{Id, SensorData, WindowData};
-use lumisync_api::{Message, Protocol, SerializationProtocol};
+use lumisync_api::transport::{deserialize, serialize};
+use lumisync_api::{Id, Message, Protocol, SensorData, WindowData};
 use time::OffsetDateTime;
 
 use crate::{Error, Result};
@@ -11,13 +11,13 @@ use crate::{Error, Result};
 use super::uuid_generator::UuidGenerator;
 
 pub struct MessageBuilder {
-    protocol: SerializationProtocol,
+    protocol: Protocol,
     node_id: NodeId,
     uuid_generator: Arc<dyn UuidGenerator>,
 }
 
 impl MessageBuilder {
-    pub fn new(protocol: SerializationProtocol, uuid_generator: Arc<dyn UuidGenerator>) -> Self {
+    pub fn new(protocol: Protocol, uuid_generator: Arc<dyn UuidGenerator>) -> Self {
         Self {
             protocol,
             node_id: NodeId::Cloud,
@@ -44,15 +44,11 @@ impl MessageBuilder {
     }
 
     pub fn serialize(&self, message: &Message) -> Result<Vec<u8>> {
-        self.protocol
-            .serialize(message)
-            .map_err(|_| Error::SerializationError)
+        serialize(self.protocol, message).map_err(|_| Error::SerializationError)
     }
 
     pub fn deserialize(&self, data: &[u8]) -> Result<Message> {
-        self.protocol
-            .deserialize(data)
-            .map_err(|_| Error::SerializationError)
+        deserialize(self.protocol, data).map_err(|_| Error::SerializationError)
     }
 
     /// Create a basic message header
@@ -215,6 +211,32 @@ impl MessageBuilder {
                 sequence,
                 command: ActuatorCommand::EmergencyStop,
             }),
+        }
+    }
+
+    /// Create acknowledgment message
+    pub fn create_acknowledgment(
+        &self,
+        target: NodeId,
+        ack_payload: AckPayload,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::Acknowledge(ack_payload),
+        }
+    }
+
+    /// Create error response message
+    pub fn create_error_response(
+        &self,
+        target: NodeId,
+        error_payload: ErrorPayload,
+        timestamp: OffsetDateTime,
+    ) -> Message {
+        Message {
+            header: self.create_header(target, Priority::Regular, timestamp),
+            payload: MessagePayload::Error(error_payload),
         }
     }
 }

@@ -113,6 +113,14 @@ where
         }
     }
 
+    pub fn get_max_speed(&self) -> f32 {
+        self.max_speed
+    }
+
+    pub fn get_acceleration(&self) -> f32 {
+        self.acceleration
+    }
+
     pub fn set_acceleration(&mut self, acceleration: f32) {
         if acceleration == 0.0 {
             return;

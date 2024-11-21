@@ -35,4 +35,14 @@ impl embedded_hal_nb::serial::Error for Error {
     }
 }
 
+impl embedded_io::Error for Error {
+    fn kind(&self) -> embedded_io::ErrorKind {
+        match self {
+            Error::NetworkError | Error::NotConnected => embedded_io::ErrorKind::Other,
+            Error::TimeoutError => embedded_io::ErrorKind::TimedOut,
+            _ => embedded_io::ErrorKind::Other,
+        }
+    }
+}
+
 pub type Result<T> = core::result::Result<T, Error>;
