@@ -70,31 +70,25 @@ pub enum MessagePayload {
 pub enum CloudCommand {
     /// Update region environmental settings
     ConfigureRegion {
-        /// Target region identifier
-        region_id: Id,
         /// New region settings
         plan: Vec<RegionSettingData>,
     },
     /// Update window control settings
     ConfigureWindow {
         /// Target window identifier
-        window_id: Id,
+        device_id: Id,
         /// New window settings
         plan: Vec<WindowSettingData>,
     },
     /// Send commands to multiple devices
     ControlDevices {
-        /// Target region identifier
-        region_id: Id,
         /// Device commands map
         commands: BTreeMap<Id, Command>,
     },
     /// Send optimization suggestions
     SendAnalyse {
-        /// Target region identifier
-        region_id: Id,
         /// Suggested window positions
-        windows: Vec<WindowData>,
+        windows: BTreeMap<Id, WindowData>,
         /// Analysis explanation
         reason: String,
         /// Confidence score
@@ -111,10 +105,8 @@ pub enum CloudCommand {
 pub enum EdgeReport {
     /// Device status update
     DeviceStatus {
-        /// Source region identifier
-        region_id: Id,
         /// Device status list
-        devices: Vec<DeviceStatus>,
+        devices: BTreeMap<Id, DeviceStatus>,
     },
     /// Edge system health metrics
     HealthReport {
@@ -136,7 +128,7 @@ pub enum EdgeReport {
 pub enum ActuatorCommand {
     /// Set window position
     SetWindowPosition(u8),
-    /// Request current status
+    /// Request current motor status
     RequestStatus,
     /// Emergency stop
     EmergencyStop,
@@ -148,31 +140,21 @@ pub enum ActuatorCommand {
 pub enum EdgeCommand {
     /// Command to control a specific actuator
     Actuator {
-        /// Actuator/device identifier
-        actuator_id: Id,
         /// Sequence number for command tracking
         sequence: u16,
         /// Command to execute
         command: ActuatorCommand,
     },
     /// Request for health status report
-    RequestHealthStatus {
-        /// Actuator/device identifier
-        actuator_id: Id,
-    },
+    RequestHealthStatus,
     /// Request for sensor data
-    RequestSensorData {
-        /// Actuator/device identifier
-        actuator_id: Id,
-    },
+    RequestSensorData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DeviceReport {
     /// Status update from an actuator
     Status {
-        /// Actuator/device identifier
-        actuator_id: Id,
         /// Window position data
         window_data: WindowData,
         /// Battery level percentage
@@ -184,8 +166,6 @@ pub enum DeviceReport {
     },
     /// Sensor data update
     SensorData {
-        /// Actuator/device identifier
-        actuator_id: Id,
         /// Sensor readings
         sensor_data: SensorData,
         /// Relative timestamp from device boot (milliseconds)
@@ -193,8 +173,6 @@ pub enum DeviceReport {
     },
     /// Device health metrics
     HealthStatus {
-        /// Actuator/device identifier
-        device_id: Id,
         /// CPU usage percentage
         cpu_usage: f32,
         /// Memory usage percentage
@@ -268,7 +246,6 @@ mod tests {
                 target: NodeId::Edge(1),
             },
             payload: MessagePayload::DeviceReport(DeviceReport::Status {
-                actuator_id: 42,
                 window_data: WindowData {
                     target_position: 75,
                 },
@@ -289,7 +266,6 @@ mod tests {
                 target: NodeId::Device([0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]),
             },
             payload: MessagePayload::EdgeCommand(EdgeCommand::Actuator {
-                actuator_id: 42,
                 sequence: 1234,
                 command: ActuatorCommand::SetWindowPosition(50),
             }),
@@ -306,7 +282,7 @@ mod tests {
                 target: NodeId::Edge(1),
             },
             payload: MessagePayload::CloudCommand(CloudCommand::ConfigureWindow {
-                window_id: 1,
+                device_id: 1,
                 plan: vec![WindowSettingData {
                     position_range: (20, 80),
                     auto_adjust: true,
@@ -359,7 +335,6 @@ mod tests {
                 target: NodeId::Edge(1),
             },
             payload: MessagePayload::DeviceReport(DeviceReport::SensorData {
-                actuator_id: 10,
                 sensor_data: SensorData {
                     temperature: 23.5,
                     illuminance: 1500,

@@ -1,5 +1,4 @@
 use embassy_time::{Duration, Timer};
-use lumisync_api::Id;
 
 use crate::{
     Error, Result,

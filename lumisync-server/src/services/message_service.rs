@@ -2,8 +2,8 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use lumisync_api::DeviceValue;
 use lumisync_api::message::*;
+use lumisync_api::{DeviceStatus, DeviceValue, Id};
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
@@ -11,7 +11,6 @@ use uuid::Uuid;
 use crate::configs::Storage;
 use crate::services::protocol::*;
 
-/// Simplified message service configuration
 #[derive(Debug, Clone)]
 pub struct MessageServiceConfig {
     pub websocket_addr: SocketAddr,
@@ -31,7 +30,6 @@ impl Default for MessageServiceConfig {
     }
 }
 
-/// Message service, integrates all protocol adapters
 pub struct MessageService {
     storage: Arc<Storage>,
     protocol_manager: Arc<ProtocolManager>,
@@ -41,7 +39,6 @@ pub struct MessageService {
 }
 
 impl MessageService {
-    /// Create a new message service instance
     pub fn new(storage: Arc<Storage>) -> Self {
         let (client_tx, _) = broadcast::channel(100);
         let (edge_tx, _) = broadcast::channel(100);
@@ -57,21 +54,17 @@ impl MessageService {
         }
     }
 
-    /// Get read-only reference to protocol manager
     pub fn get_protocol_manager(&self) -> &ProtocolManager {
         &self.protocol_manager
     }
 
-    /// Initialize pre-configured protocol adapters
     pub fn init_protocols(
         &mut self,
         config: MessageServiceConfig,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Create mutable reference to add protocols
         let protocol_manager = Arc::get_mut(&mut self.protocol_manager)
             .ok_or_else(|| "Unable to get mutable reference to protocol manager".to_string())?;
 
-        // Initialize WebSocket protocol
         if config.enable_websocket {
             let ws_protocol = WebSocketProtocol::new(config.websocket_addr);
             protocol_manager.add_protocol(Box::new(ws_protocol));
@@ -81,35 +74,28 @@ impl MessageService {
             );
         }
 
-        // Initialize TCP protocol
         if config.enable_tcp {
             let tcp_protocol = TcpProtocol::new(config.tcp_addr);
             protocol_manager.add_protocol(Box::new(tcp_protocol));
             tracing::info!("TCP protocol initialized on {}", config.tcp_addr);
         }
 
-        // Return success
         Ok(())
     }
 
     /// Start the message service
     pub async fn start(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Start all protocol adapters
         self.protocol_manager.start_all().await?;
 
-        // Create stop signal
         let (stop_tx, mut stop_rx) = oneshot::channel();
         self.stop_tx = Some(stop_tx);
 
-        // Create broadcast handling task
         let client_tx = self.client_tx.clone();
         let edge_tx = self.edge_tx.clone();
         let protocol_manager = self.protocol_manager.clone();
         let storage = self.storage.clone();
 
-        // Create message handling task
         tokio::spawn(async move {
-            // Subscribe to message channels
             let mut app_rx = client_tx.subscribe();
             let mut device_rx = edge_tx.subscribe();
 
@@ -121,12 +107,10 @@ impl MessageService {
                     },
                     result = app_rx.recv() => {
                         if let Ok(message) = result {
-                            // Process messages from clients
                             if let Err(e) = protocol_manager.broadcast_app_message(message.clone()).await {
                                 tracing::error!("Failed to broadcast app message: {}", e);
                             }
 
-                            // Log message
                             if let Err(e) = log_event(&storage, "client_message", &message).await {
                                 tracing::error!("Failed to log client message: {}", e);
                             }
@@ -134,12 +118,9 @@ impl MessageService {
                     },
                     result = device_rx.recv() => {
                         if let Ok(message) = result {
-                            // Process messages from devices
                             if let Err(e) = protocol_manager.broadcast_device_message(message.clone()).await {
                                 tracing::error!("Failed to broadcast device message: {}", e);
                             }
-
-                            // Additional device message processing logic can be added here
                         }
                     }
                 }
@@ -151,26 +132,22 @@ impl MessageService {
 
     /// Stop the message service
     pub async fn stop(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Send stop signal
         if let Some(tx) = self.stop_tx.take() {
             let _ = tx.send(());
         }
 
-        // Stop all protocol adapters
         self.protocol_manager.stop_all().await?;
 
         Ok(())
     }
 
-    /// Send application message
+    /// Send application message to clients
     pub async fn send_app_message(
         &self,
         message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Log message
         log_event(&self.storage, "outgoing_app_message", &message).await?;
 
-        // Send to broadcast channel
         self.client_tx
             .send(message)
             .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
@@ -178,19 +155,13 @@ impl MessageService {
         Ok(())
     }
 
-    /// Send device message
+    /// Send device message to edge devices
     pub async fn send_device_message(
         &self,
         message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // For tests, this just logs success without actually sending
-        #[cfg(test)]
-        {
-            return Ok(());
-        }
+        log_event(&self.storage, "outgoing_device_message", &message).await?;
 
-        // Send to broadcast channel
-        #[cfg(not(test))]
         self.edge_tx
             .send(message)
             .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
@@ -203,27 +174,69 @@ impl MessageService {
         &self,
         message: Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Log message
         log_event(&self.storage, "edge_message", &message).await?;
 
-        // Process by message type
+        // Extract region ID from message source (Edge node ID)
+        let region_id = match message.header.source {
+            NodeId::Edge(edge_id) => edge_id as Id,
+            _ => {
+                tracing::warn!(
+                    "Received edge message from invalid source: {:?}",
+                    message.header.source
+                );
+                return Err("Invalid source for edge message".into());
+            }
+        };
+
         match &message.payload {
-            MessagePayload::EdgeReport(report) => self.handle_edge_report(report, &message).await?,
+            MessagePayload::EdgeReport(report) => {
+                self.handle_edge_report(region_id, report, &message).await?;
+            }
             MessagePayload::Acknowledge(ack) => {
                 tracing::info!(
-                    "Received acknowledgment for message: {}",
-                    ack.original_msg_id
+                    "Received acknowledgment for message: {} - Status: {}",
+                    ack.original_msg_id,
+                    ack.status
                 );
+                if let Some(details) = &ack.details {
+                    tracing::debug!("Acknowledgment details: {}", details);
+                }
             }
             MessagePayload::Error(error) => {
+                let original_msg = error
+                    .original_msg_id
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+
                 tracing::error!(
-                    "Received error from edge device: {:?} - {}",
+                    "Received error from edge device - Original Message: {}, Code: {:?}, Message: {}",
+                    original_msg,
                     error.code,
                     error.message
                 );
+
+                // Handle specific error types
+                match error.code {
+                    ErrorCode::DeviceOffline => {
+                        tracing::warn!("Device offline detected, may need to retry later");
+                    }
+                    ErrorCode::HardwareFailure => {
+                        tracing::error!("Hardware failure detected, may need maintenance alert");
+                    }
+                    ErrorCode::BatteryLow => {
+                        tracing::warn!("Low battery detected, monitoring device status");
+                    }
+                    _ => {
+                        tracing::debug!("General error, no specific recovery action needed");
+                    }
+                }
             }
             _ => {
-                tracing::warn!("Received unexpected message type from edge device");
+                tracing::warn!(
+                    "Received unexpected message type from edge device: {:?}",
+                    message.payload
+                );
+                return Err("Unexpected message type from edge device".into());
             }
         }
 
@@ -233,63 +246,56 @@ impl MessageService {
     /// Handle Edge device reports
     async fn handle_edge_report(
         &self,
+        region_id: Id,
         report: &EdgeReport,
         original_message: &Message,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         match report {
-            EdgeReport::DeviceStatus { region_id, devices } => {
-                let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM regions WHERE id = $1")
-                    .bind(*region_id)
-                    .fetch_one(self.storage.get_pool())
-                    .await?;
+            EdgeReport::DeviceStatus { devices } => {
+                if !self.region_exists(region_id).await? {
+                    tracing::warn!(
+                        "Received device status for non-existent region: {}",
+                        region_id
+                    );
+                    return Ok(());
+                }
 
-                if count > 0 {
-                    for device in devices {
-                        let timestamp: OffsetDateTime = device.updated_at;
-                        match &device.data {
-                            DeviceValue::Window { window_id, data } => {
-                                // Update window state
-                                let position_as_state =
-                                    (data.target_position as f32 / 100.0) * 2.0 - 1.0;
-                                sqlx::query("UPDATE windows SET state = $1 WHERE id = $2")
-                                    .bind(position_as_state)
-                                    .bind(*window_id)
-                                    .execute(self.storage.get_pool())
-                                    .await?;
-                            }
-                            DeviceValue::Sensor { sensor_id, data } => {
-                                // Store sensor data in device_records table
-                                let sensor_data = serde_json::json!({
-                                    "light": data.illuminance,
-                                    "temperature": data.temperature,
-                                    "humidity": data.humidity
-                                });
-
-                                sqlx::query("INSERT INTO device_records (device_id, data, time) VALUES ($1, $2, $3)")
-                                    .bind(sensor_id)
-                                    .bind(sensor_data)
-                                    .bind(timestamp)
-                                    .execute(self.storage.get_pool())
-                                    .await?;
-                            }
-                        }
+                for (device_id, device_status) in devices {
+                    if let Err(e) = self.update_device_status(*device_id, device_status).await {
+                        tracing::error!("Failed to update device {} status: {}", device_id, e);
                     }
                 }
 
-                // Forward status to connected clients
                 self.send_app_message(original_message.clone()).await?;
+
+                tracing::debug!(
+                    "Processed device status report for region {} with {} devices",
+                    region_id,
+                    devices.len()
+                );
             }
+
             EdgeReport::HealthReport {
                 cpu_usage,
                 memory_usage,
             } => {
                 tracing::info!(
-                    "Edge device health: CPU {}%, Memory {}%",
+                    "Edge device health report - CPU: {:.1}%, Memory: {:.1}%",
                     cpu_usage,
                     memory_usage
                 );
-                // These metrics can be stored for monitoring
+
+                // Alert on high resource usage
+                if *cpu_usage > 90.0 || *memory_usage > 90.0 {
+                    tracing::warn!(
+                        "Edge device resource usage is high - CPU: {:.1}%, Memory: {:.1}%",
+                        cpu_usage,
+                        memory_usage
+                    );
+                    // TODO: Could trigger alerts or scaling actions here
+                }
             }
+
             EdgeReport::RequestTimeSync {
                 local_time,
                 current_offset_ms,
@@ -300,14 +306,15 @@ impl MessageService {
                     current_offset_ms
                 );
 
-                // Send time sync response with current cloud time
                 let time_sync_command = CloudCommand::TimeSync {
                     cloud_time: OffsetDateTime::now_utc(),
                 };
 
-                self.send_control_message(time_sync_command).await?;
-
-                tracing::info!("Time sync response sent to edge device");
+                let message_id = self.send_control_message(time_sync_command).await?;
+                tracing::info!(
+                    "Time sync response sent to edge device (message_id: {})",
+                    message_id
+                );
             }
         }
 
@@ -327,22 +334,93 @@ impl MessageService {
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
                 source: NodeId::Cloud,
-                target: NodeId::Edge(1),
+                target: NodeId::Edge(1), // TODO: Make target configurable
             },
             payload: MessagePayload::CloudCommand(command),
         };
 
-        // Log the sent message
         log_event(&self.storage, "cloud_command", &message).await?;
 
-        // Send message to device
         self.send_app_message(message).await?;
 
         Ok(message_id)
     }
+
+    /// Check if region exists in database
+    async fn region_exists(&self, region_id: Id) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM regions WHERE id = $1")
+            .bind(region_id as i32)
+            .fetch_one(self.storage.get_pool())
+            .await?;
+
+        Ok(count > 0)
+    }
+
+    /// Update device status in database
+    async fn update_device_status(
+        &self,
+        device_id: Id,
+        device_status: &DeviceStatus,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let timestamp = device_status.updated_at;
+
+        match &device_status.data {
+            DeviceValue::Window { data } => {
+                // Convert percentage (0-100) to state range (-1.0 to 1.0)
+                let position_as_state = (data.target_position as f32 / 100.0) * 2.0 - 1.0;
+
+                sqlx::query("UPDATE windows SET state = $1 WHERE id = $2")
+                    .bind(position_as_state)
+                    .bind(device_id as i32)
+                    .execute(self.storage.get_pool())
+                    .await?;
+
+                tracing::debug!(
+                    "Updated window {} position to {}% (state: {:.2})",
+                    device_id,
+                    data.target_position,
+                    position_as_state
+                );
+            }
+
+            DeviceValue::Sensor { data } => {
+                let sensor_json = serde_json::json!({
+                    "light": data.illuminance,
+                    "temperature": data.temperature,
+                    "humidity": data.humidity
+                });
+
+                sqlx::query(
+                    "INSERT INTO device_records (device_id, data, time) VALUES ($1, $2, $3)",
+                )
+                .bind(device_id as i32)
+                .bind(sensor_json)
+                .bind(timestamp)
+                .execute(self.storage.get_pool())
+                .await?;
+
+                tracing::debug!(
+                    "Stored sensor data for device {}: temp={:.1}°C, humidity={:.1}%, light={}lux",
+                    device_id,
+                    data.temperature,
+                    data.humidity,
+                    data.illuminance
+                );
+            }
+        }
+
+        tracing::debug!(
+            "Device {} status updated - Battery: {}%, RSSI: {}",
+            device_id,
+            device_status.battery,
+            device_status.rssi
+        );
+
+        Ok(())
+    }
 }
 
-/// Log message to database
+/// Log message to database for audit trail
 async fn log_event<T: serde::Serialize>(
     storage: &Storage,
     event_type: &str,
@@ -365,15 +443,17 @@ async fn log_event<T: serde::Serialize>(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use lumisync_api::{
+        Command, DeviceStatus, DeviceType, DeviceValue, Message, MessageHeader, MessagePayload,
+        Priority, SensorData, UserRole, WindowData,
+    };
     use serde_json::json;
     use time::OffsetDateTime;
     use uuid::Uuid;
 
     use crate::tests::*;
-    use lumisync_api::{
-        Command, DeviceStatus, DeviceType, DeviceValue, Message, MessageHeader, MessagePayload,
-        Priority, SensorData, UserRole, WindowData,
-    };
 
     use super::*;
 
@@ -390,7 +470,6 @@ mod tests {
             enable_tcp: true,
         };
 
-        // Initialize protocols
         let result = message_service.init_protocols(config);
         assert!(
             result.is_ok(),
@@ -398,7 +477,6 @@ mod tests {
             result.err()
         );
 
-        // Start service
         let start_result = message_service.start().await;
         assert!(
             start_result.is_ok(),
@@ -406,14 +484,12 @@ mod tests {
             start_result.err()
         );
 
-        // Ensure protocol manager is correctly initialized
         let protocol_manager = message_service.get_protocol_manager();
         assert!(
             !protocol_manager.protocols.is_empty(),
             "Protocol manager should contain at least one protocol"
         );
 
-        // Stop service
         let stop_result = message_service.stop().await;
         assert!(
             stop_result.is_ok(),
@@ -435,11 +511,9 @@ mod tests {
             enable_tcp: true,
         };
 
-        // Initialize protocols and start service
         message_service.init_protocols(config).unwrap();
         message_service.start().await.unwrap();
 
-        // Create a test message
         let message = Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
@@ -449,12 +523,11 @@ mod tests {
                 target: NodeId::Edge(1),
             },
             payload: MessagePayload::CloudCommand(CloudCommand::ConfigureWindow {
-                window_id: 1,
+                device_id: 1,
                 plan: vec![],
             }),
         };
 
-        // Send message
         let result = message_service.send_app_message(message).await;
         assert!(
             result.is_ok(),
@@ -462,7 +535,6 @@ mod tests {
             result.err()
         );
 
-        // Stop service
         message_service.stop().await.unwrap();
     }
 
@@ -479,11 +551,9 @@ mod tests {
             enable_tcp: true,
         };
 
-        // Initialize protocols and start service
         message_service.init_protocols(config).unwrap();
         message_service.start().await.unwrap();
 
-        // Create a test device message
         let device_message = Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
@@ -493,7 +563,6 @@ mod tests {
                 target: NodeId::Cloud,
             },
             payload: MessagePayload::CloudCommand(CloudCommand::ControlDevices {
-                region_id: 1,
                 commands: [(
                     1,
                     Command::SetWindow {
@@ -508,7 +577,6 @@ mod tests {
             }),
         };
 
-        // Send device message
         let result = message_service.send_device_message(device_message).await;
         assert!(
             result.is_ok(),
@@ -516,7 +584,6 @@ mod tests {
             result.err()
         );
 
-        // Stop service
         message_service.stop().await.unwrap();
     }
 
@@ -524,7 +591,6 @@ mod tests {
     async fn test_process_edge_message() {
         let storage = setup_test_db().await;
 
-        // Create test user, group and region
         let _user = create_test_user(
             storage.clone(),
             "test@example.com",
@@ -544,7 +610,6 @@ mod tests {
         )
         .await;
 
-        // Create test device
         let device = create_test_device(
             storage.clone(),
             region.id,
@@ -557,28 +622,22 @@ mod tests {
         let mut message_service = MessageService::new(storage.clone());
 
         let config = MessageServiceConfig {
-            // Use different ports to avoid conflicts between tests
             websocket_addr: "127.0.0.1:18083".parse().unwrap(),
             tcp_addr: "127.0.0.1:19003".parse().unwrap(),
             enable_websocket: true,
             enable_tcp: true,
         };
 
-        // Initialize protocols and start service
         message_service.init_protocols(config).unwrap();
         message_service.start().await.unwrap();
 
-        // Create an Edge device report message
         let sensor_data = SensorData {
             temperature: 24.5,
             humidity: 60.0,
             illuminance: 600,
         };
 
-        let device_value = DeviceValue::Sensor {
-            sensor_id: device.id,
-            data: sensor_data,
-        };
+        let device_value = DeviceValue::Sensor { data: sensor_data };
 
         let device_status = DeviceStatus {
             data: device_value,
@@ -587,23 +646,22 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
         };
 
-        let edge_report = EdgeReport::DeviceStatus {
-            region_id: region.id,
-            devices: vec![device_status],
-        };
+        let mut devices = BTreeMap::new();
+        devices.insert(device.id, device_status);
+
+        let edge_report = EdgeReport::DeviceStatus { devices };
 
         let message = Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
                 timestamp: OffsetDateTime::now_utc(),
                 priority: Priority::Regular,
-                source: NodeId::Edge(1),
+                source: NodeId::Edge(region.id as u8), // Use region.id as edge_id
                 target: NodeId::Cloud,
             },
             payload: MessagePayload::EdgeReport(edge_report),
         };
 
-        // Process Edge message
         let result = message_service.process_edge_message(message).await;
         assert!(
             result.is_ok(),
@@ -611,7 +669,6 @@ mod tests {
             result.err()
         );
 
-        // Stop service
         message_service.stop().await.unwrap();
     }
 
@@ -628,17 +685,14 @@ mod tests {
             enable_tcp: true,
         };
 
-        // Initialize protocols and start service
         message_service.init_protocols(config).unwrap();
         message_service.start().await.unwrap();
 
-        // Create a control command
         let command = CloudCommand::ConfigureWindow {
-            window_id: 1,
+            device_id: 1,
             plan: vec![],
         };
 
-        // Send control message
         let result = message_service.send_control_message(command).await;
         assert!(
             result.is_ok(),
@@ -646,11 +700,9 @@ mod tests {
             result.err()
         );
 
-        // Get returned message ID
         let message_id = result.unwrap();
         assert_ne!(message_id, Uuid::nil(), "Message ID should not be empty");
 
-        // Stop service
         message_service.stop().await.unwrap();
     }
 
@@ -667,11 +719,9 @@ mod tests {
             enable_tcp: true,
         };
 
-        // Initialize protocols and start service
         message_service.init_protocols(config).unwrap();
         message_service.start().await.unwrap();
 
-        // Create a time sync request from edge device
         let edge_time = OffsetDateTime::from_unix_timestamp(1609459200).unwrap(); // 2021-01-01 00:00:00 UTC
         let time_sync_request = EdgeReport::RequestTimeSync {
             local_time: edge_time,
@@ -689,7 +739,6 @@ mod tests {
             payload: MessagePayload::EdgeReport(time_sync_request),
         };
 
-        // Process time sync request
         let result = message_service.process_edge_message(message).await;
         assert!(
             result.is_ok(),
@@ -697,7 +746,6 @@ mod tests {
             result.err()
         );
 
-        // Verify that the time sync was logged (events table should have the entry)
         let event_count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE event_type = 'edge_message'")
                 .fetch_one(storage.get_pool())
@@ -709,7 +757,6 @@ mod tests {
             "Time sync request should be logged in events"
         );
 
-        // Stop service
         message_service.stop().await.unwrap();
     }
 }

@@ -5,10 +5,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use embedded_io_adapters::tokio_1::FromTokio;
-use lumisync_api::{
-    Message,
-    transport::{AsyncMessageTransport, Protocol},
-};
+use lumisync_api::Message;
+use lumisync_api::transport::{AsyncMessageTransport, Protocol};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 

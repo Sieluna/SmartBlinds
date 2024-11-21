@@ -10,10 +10,8 @@ use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use futures::{SinkExt, StreamExt};
-use lumisync_api::{
-    Message,
-    transport::{Protocol, deserialize, serialize},
-};
+use lumisync_api::Message;
+use lumisync_api::transport::{Protocol, deserialize, serialize};
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use uuid::Uuid;

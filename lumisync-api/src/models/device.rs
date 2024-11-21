@@ -132,17 +132,11 @@ pub enum DeviceSettingUnion {
 pub enum DeviceValue {
     /// Window position data
     Window {
-        /// Window identifier
-        window_id: Id,
-        /// Window state data
         #[serde(flatten)]
         data: WindowData,
     },
     /// Sensor reading data
     Sensor {
-        /// Sensor identifier
-        sensor_id: Id,
-        /// Sensor readings
         #[serde(flatten)]
         data: SensorData,
     },

@@ -490,7 +490,7 @@ mod sync_tests {
             vec![0u8; 1],                  // Minimal
             vec![0xFFu8; 1000],            // Repeated
             (0..255).collect::<Vec<u8>>(), // Sequential
-            [0x55, 0xAA].repeat(500),  // Alternating
+            [0x55, 0xAA].repeat(500),      // Alternating
         ];
 
         for (i, test_data) in test_patterns.into_iter().enumerate() {
