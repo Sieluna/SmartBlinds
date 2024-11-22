@@ -1,4 +1,4 @@
-use super::{AuthError, DeviceError, GroupError, RegionError, SettingError};
+use super::{AuthError, DeviceError, GroupError, MessageError, RegionError, SettingError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -10,6 +10,9 @@ pub enum ApiError {
 
     #[error("Group error: {0}")]
     GroupError(#[from] GroupError),
+
+    #[error("Message error: {0}")]
+    MessageError(#[from] MessageError),
 
     #[error("Region error: {0}")]
     RegionError(#[from] RegionError),

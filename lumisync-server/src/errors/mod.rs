@@ -2,6 +2,7 @@ pub mod api;
 pub mod auth;
 pub mod device;
 pub mod group;
+pub mod message;
 pub mod region;
 pub mod setting;
 
@@ -9,6 +10,7 @@ pub use api::ApiError;
 pub use auth::AuthError;
 pub use device::DeviceError;
 pub use group::GroupError;
+pub use message::MessageError;
 pub use region::RegionError;
 pub use setting::SettingError;
 
@@ -25,6 +27,7 @@ impl IntoResponse for ApiError {
             ApiError::AuthError(e) => (e.status_code(), e.to_string(), None),
             ApiError::DeviceError(e) => (e.status_code(), e.to_string(), None),
             ApiError::GroupError(e) => (e.status_code(), e.to_string(), None),
+            ApiError::MessageError(e) => (e.status_code(), e.to_string(), None),
             ApiError::RegionError(e) => (e.status_code(), e.to_string(), None),
             ApiError::SettingError(e) => (e.status_code(), e.to_string(), None),
             ApiError::DatabaseError(e) => {

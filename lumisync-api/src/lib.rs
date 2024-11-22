@@ -7,8 +7,10 @@ extern crate std;
 
 pub mod message;
 pub mod models;
+pub mod time;
 pub mod transport;
 
 pub use message::*;
 pub use models::*;
+pub use time::*;
 pub use transport::*;

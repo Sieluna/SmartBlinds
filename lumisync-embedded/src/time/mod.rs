@@ -1,10 +1,11 @@
+mod sync;
+
+pub use sync::TimeSync;
+
 use embassy_time::{Duration, Timer};
 use time::OffsetDateTime;
 
 use crate::Result;
-
-mod sync;
-pub use sync::TimeSync;
 
 pub struct TimeSyncService {
     time_sync: TimeSync,

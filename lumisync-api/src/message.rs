@@ -10,7 +10,7 @@ use super::{
     Command, DeviceStatus, Id, RegionSettingData, SensorData, WindowData, WindowSettingData,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum NodeId {
     /// Cloud node
     Cloud,
@@ -20,7 +20,7 @@ pub enum NodeId {
     Device([u8; 6]),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Priority {
     /// Normal operation message
     Regular,
@@ -60,10 +60,60 @@ pub enum MessagePayload {
     EdgeCommand(EdgeCommand),
     /// Report from device to edge
     DeviceReport(DeviceReport),
+    /// Time synchronization messages
+    TimeSync(TimeSyncPayload),
     /// Success confirmation response
     Acknowledge(AckPayload),
     /// Error response with details
     Error(ErrorPayload),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TimeSyncPayload {
+    /// Time synchronization request
+    Request {
+        /// Request sequence number
+        sequence: u32,
+        /// Send time
+        send_time: OffsetDateTime,
+        /// Precision requirement (milliseconds)
+        precision_ms: u16,
+    },
+    /// Time synchronization response
+    Response {
+        /// Corresponding request sequence number
+        request_sequence: u32,
+        /// Request receive time
+        request_receive_time: OffsetDateTime,
+        /// Response send time
+        response_send_time: OffsetDateTime,
+        /// Estimated network delay (milliseconds)
+        estimated_delay_ms: u32,
+        /// Time accuracy (milliseconds)
+        accuracy_ms: u16,
+    },
+    /// Time offset broadcast (mainly used for edge nodes to broadcast to devices)
+    Broadcast {
+        /// Current timestamp
+        timestamp: OffsetDateTime,
+        /// Time offset (milliseconds)
+        offset_ms: i64,
+        /// Accuracy assessment (milliseconds)
+        accuracy_ms: u16,
+    },
+    /// Time synchronization status query
+    StatusQuery,
+    /// Time synchronization status response
+    StatusResponse {
+        /// Whether it is synchronized
+        is_synced: bool,
+        /// Current time offset (milliseconds)
+        current_offset_ms: i64,
+        /// Last synchronization time
+        last_sync_time: OffsetDateTime,
+        /// Synchronization accuracy (milliseconds)
+        accuracy_ms: u16,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,11 +144,6 @@ pub enum CloudCommand {
         /// Confidence score
         confidence: f32,
     },
-    /// Time synchronization command
-    TimeSync {
-        /// Current cloud server UTC time
-        cloud_time: OffsetDateTime,
-    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,13 +159,6 @@ pub enum EdgeReport {
         cpu_usage: f32,
         /// Memory usage percentage
         memory_usage: f32,
-    },
-    /// Time synchronization request
-    RequestTimeSync {
-        /// Edge's current local time
-        local_time: OffsetDateTime,
-        /// Time offset from last sync (milliseconds)
-        current_offset_ms: i64,
     },
 }
 

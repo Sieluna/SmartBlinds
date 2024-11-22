@@ -5,8 +5,6 @@ use axum::routing::get;
 use axum::{Json, Router};
 use lumisync_api::models::*;
 use serde_json::json;
-// use tokio::sync::broadcast;
-// use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -14,7 +12,9 @@ use crate::configs::{SchemaManager, Settings, Storage};
 use crate::handles::*;
 use crate::middlewares::TokenState;
 use crate::repositories::*;
-use crate::services::{AuthService, PermissionService, TokenService};
+use crate::services::{
+    AuthService, MessageService, MessageServiceConfig, PermissionService, TokenService,
+};
 
 fn openapi() -> Router {
     use utoipa::OpenApi;
@@ -146,31 +146,22 @@ async fn health_check() -> Json<serde_json::Value> {
 }
 
 pub async fn create_app(settings: &Arc<Settings>) -> Router {
-    // let (sender, _receiver) = broadcast::channel(100);
-    // let (client_sender, _client_receiver) = mpsc::channel(100);
-    // let (edge_sender, edge_receiver) = mpsc::channel(100);
     let storage = Arc::new(
         Storage::new(settings.database.clone(), SchemaManager::default())
             .await
             .unwrap(),
     );
 
-    // let message_service = Arc::new(MessageService::new(
-    //     storage.clone(),
-    //     client_sender.clone(),
-    //     edge_sender.clone(),
-    // ));
-    // let message_service_clone = message_service.clone();
-    // tokio::spawn(async move {
-    //     let _ = message_service_clone.start_listening(edge_receiver).await;
-    // });
+    let mut message_service = MessageService::new(storage.clone());
+    let message_config = MessageServiceConfig {
+        websocket_addr: "127.0.0.1:8080".parse().unwrap(),
+        tcp_addr: "127.0.0.1:9000".parse().unwrap(),
+        enable_websocket: true,
+        enable_tcp: true,
+    };
 
-    // let analyser_service = Arc::new(AnalyserService::new(&storage, &sender).await.unwrap());
-    // analyser_service.start_listener();
-
-    // let actuator_service = ActuatorService::new(settings.embedded.clone())
-    //     .map(Arc::new)
-    //     .ok();
+    message_service.init_protocols(message_config).unwrap();
+    message_service.start().await.unwrap();
 
     let user_repository = Arc::new(UserRepository::new(storage.clone()));
     let group_repository = Arc::new(GroupRepository::new(storage.clone()));

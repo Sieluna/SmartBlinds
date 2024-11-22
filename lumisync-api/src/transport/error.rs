@@ -40,7 +40,7 @@ impl fmt::Display for TransportError {
 #[cfg(feature = "std")]
 impl std::error::Error for TransportError {}
 
-pub type Result<T> = core::result::Result<T, TransportError>;
+pub type TransportResult<T> = core::result::Result<T, TransportError>;
 
 #[cfg(test)]
 mod tests {
