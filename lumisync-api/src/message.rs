@@ -10,7 +10,7 @@ use super::{
     Command, DeviceStatus, Id, RegionSettingData, SensorData, WindowData, WindowSettingData,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum NodeId {
     /// Cloud node
     Cloud,
@@ -18,6 +18,8 @@ pub enum NodeId {
     Edge(u8),
     /// Device node (6 byte MAC)
     Device([u8; 6]),
+    /// Broadcast to any/all nodes (universal broadcast address)
+    Any,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -74,8 +76,8 @@ pub enum TimeSyncPayload {
     Request {
         /// Request sequence number
         sequence: u32,
-        /// Send time
-        send_time: OffsetDateTime,
+        /// Send time (None for first-time sync)
+        send_time: Option<OffsetDateTime>,
         /// Precision requirement (milliseconds)
         precision_ms: u16,
     },

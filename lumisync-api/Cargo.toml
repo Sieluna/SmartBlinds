@@ -18,5 +18,5 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 default = ["std"]
-std = ["embedded-io/std", "embedded-io-async/std", "serde/std", "serde_json/std", "time/std"]
+std = ["embedded-io/std", "embedded-io-async/std", "serde/std", "serde_json/std", "time/std", "uuid/v4"]
 docs = ["dep:utoipa", "std"]
