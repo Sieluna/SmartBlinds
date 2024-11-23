@@ -12,9 +12,7 @@ use crate::configs::{SchemaManager, Settings, Storage};
 use crate::handles::*;
 use crate::middlewares::TokenState;
 use crate::repositories::*;
-use crate::services::{
-    AuthService, MessageService, MessageServiceConfig, PermissionService, TokenService,
-};
+use crate::services::*;
 
 fn openapi() -> Router {
     use utoipa::OpenApi;
@@ -151,17 +149,6 @@ pub async fn create_app(settings: &Arc<Settings>) -> Router {
             .await
             .unwrap(),
     );
-
-    let mut message_service = MessageService::new(storage.clone());
-    let message_config = MessageServiceConfig {
-        websocket_addr: "127.0.0.1:8080".parse().unwrap(),
-        tcp_addr: "127.0.0.1:9000".parse().unwrap(),
-        enable_websocket: true,
-        enable_tcp: true,
-    };
-
-    message_service.init_protocols(message_config).unwrap();
-    message_service.start().await.unwrap();
 
     let user_repository = Arc::new(UserRepository::new(storage.clone()));
     let group_repository = Arc::new(GroupRepository::new(storage.clone()));

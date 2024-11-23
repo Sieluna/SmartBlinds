@@ -10,7 +10,7 @@ use toml::map::Map;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Server {
     pub host: String,
-    pub port: u16,
+    pub port: Vec<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,7 +207,7 @@ mod tests {
         let settings = Settings::new().unwrap();
 
         assert!(!settings.server.host.is_empty());
-        assert!(settings.server.port > 0);
+        assert!(!settings.server.port.is_empty());
 
         assert!(!settings.logger.level.is_empty());
 

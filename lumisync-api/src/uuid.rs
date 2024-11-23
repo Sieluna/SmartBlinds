@@ -14,7 +14,6 @@ pub trait UuidGenerator: Send + Sync {
 }
 
 #[cfg(feature = "std")]
-#[derive(Clone)]
 pub struct RandomUuidGenerator;
 
 #[cfg(feature = "std")]

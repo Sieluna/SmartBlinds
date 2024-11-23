@@ -1,18 +1,41 @@
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use lumisync_api::message::*;
+use lumisync_api::time::{SyncConfig, TimeProvider, TimeSyncService};
+use lumisync_api::uuid::RandomUuidGenerator;
 use lumisync_api::{DeviceStatus, Id};
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
-use uuid::Uuid;
 
 use crate::configs::Storage;
 use crate::errors::{ApiError, MessageError};
 
 use super::transport::MessageRouter;
 
-type ServiceResult<T> = Result<T, ApiError>;
+type RandomTimeSyncService = TimeSyncService<SystemTimeProvider, RandomUuidGenerator>;
+
+#[derive(Debug, Default, Clone)]
+pub struct SystemTimeProvider;
+
+impl TimeProvider for SystemTimeProvider {
+    fn monotonic_time_ms(&self) -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+
+    fn wall_clock_time(&self) -> Option<OffsetDateTime> {
+        Some(OffsetDateTime::now_utc())
+    }
+
+    fn has_authoritative_time(&self) -> bool {
+        true
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct MessageServiceConfig {
@@ -57,7 +80,22 @@ impl MessageService {
         (service, incoming_tx)
     }
 
-    pub async fn start(&mut self) -> ServiceResult<()> {
+    fn create_time_sync_service() -> RandomTimeSyncService {
+        let config = SyncConfig {
+            sync_interval_ms: 60000, // 1 minute - server doesn't need frequent sync
+            max_drift_ms: 100,       // 100ms tolerance
+            offset_history_size: 10,
+            delay_threshold_ms: 1000, // 1 second tolerance for network delay
+            max_retry_count: 3,
+            failure_cooldown_ms: 30000, // 30 seconds cooldown
+        };
+
+        let time_provider = SystemTimeProvider::default();
+
+        TimeSyncService::new(time_provider, NodeId::Cloud, config, RandomUuidGenerator)
+    }
+
+    pub async fn start(&mut self) -> Result<(), ApiError> {
         let (stop_tx, mut stop_rx) = oneshot::channel();
         self.stop_tx = Some(stop_tx);
 
@@ -68,6 +106,7 @@ impl MessageService {
 
         let storage = self.storage.clone();
         let message_router = self.message_router.clone();
+        let mut time_service = Self::create_time_sync_service();
 
         tokio::spawn(async move {
             loop {
@@ -79,7 +118,7 @@ impl MessageService {
                     message = incoming_rx.recv() => {
                         match message {
                             Some(msg) => {
-                                if let Err(e) = Self::process_message(&storage, &message_router, msg).await {
+                                if let Err(e) = Self::process_message(&storage, &message_router, &mut time_service, msg).await {
                                     tracing::error!("Message processing failed: {}", e);
                                 }
                             }
@@ -96,8 +135,9 @@ impl MessageService {
     async fn process_message(
         storage: &Storage,
         message_router: &MessageRouter,
+        time_service: &mut RandomTimeSyncService,
         message: Message,
-    ) -> ServiceResult<()> {
+    ) -> Result<(), ApiError> {
         Self::audit_message(storage, &message).await?;
 
         match &message.payload {
@@ -114,7 +154,14 @@ impl MessageService {
                 message_router.publish_app_message(message).await;
             }
             MessagePayload::TimeSync(sync_payload) => {
-                Self::handle_time_sync(storage, message_router, &message, sync_payload).await?;
+                Self::handle_time_sync(
+                    storage,
+                    message_router,
+                    time_service,
+                    &message,
+                    sync_payload,
+                )
+                .await?;
             }
             MessagePayload::Acknowledge(_) | MessagePayload::Error(_) => {
                 message_router.publish_app_message(message).await;
@@ -129,7 +176,7 @@ impl MessageService {
         message_router: &MessageRouter,
         original_message: &Message,
         report: &EdgeReport,
-    ) -> ServiceResult<()> {
+    ) -> Result<(), ApiError> {
         match report {
             EdgeReport::DeviceStatus { devices } => {
                 Self::handle_device_status_update(
@@ -155,8 +202,8 @@ impl MessageService {
         storage: &Storage,
         message_router: &MessageRouter,
         original_message: &Message,
-        devices: &std::collections::BTreeMap<Id, DeviceStatus>,
-    ) -> ServiceResult<()> {
+        devices: &BTreeMap<Id, DeviceStatus>,
+    ) -> Result<(), ApiError> {
         let mut tx = storage.get_pool().begin().await?;
 
         for (device_id, status) in devices {
@@ -176,7 +223,7 @@ impl MessageService {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         device_id: Id,
         status: &DeviceStatus,
-    ) -> ServiceResult<()> {
+    ) -> Result<(), ApiError> {
         let data = serde_json::to_value(&status).map_err(MessageError::Serialization)?;
 
         sqlx::query("INSERT INTO device_records (device_id, data, time) VALUES (?, ?, ?)")
@@ -193,7 +240,7 @@ impl MessageService {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         device_id: Id,
         status: &DeviceStatus,
-    ) -> ServiceResult<()> {
+    ) -> Result<(), ApiError> {
         let status_json = serde_json::to_value(status).map_err(MessageError::Serialization)?;
 
         sqlx::query("UPDATE devices SET status = ? WHERE id = ?")
@@ -217,13 +264,24 @@ impl MessageService {
     async fn handle_time_sync(
         storage: &Storage,
         message_router: &MessageRouter,
+        time_service: &mut RandomTimeSyncService,
         message: &Message,
         sync_payload: &TimeSyncPayload,
-    ) -> ServiceResult<()> {
+    ) -> Result<(), ApiError> {
         match sync_payload {
-            TimeSyncPayload::Request { sequence, .. } => {
+            TimeSyncPayload::Request { .. } => {
                 if matches!(message.header.source, NodeId::Edge(_)) {
-                    Self::respond_to_edge_time_request(message_router, message, *sequence).await;
+                    match time_service.handle_sync_request(message) {
+                        Ok(response) => {
+                            message_router.publish_device_message(response).await;
+                            tracing::debug!(
+                                target: "time_sync",
+                                edge = ?message.header.source,
+                                "Provided authoritative time to Edge"
+                            );
+                        }
+                        Err(e) => tracing::error!("Failed to handle time sync request: {}", e),
+                    }
                 } else {
                     tracing::warn!(
                         "Rejected time sync request from {:?} - only Edge nodes allowed",
@@ -231,75 +289,22 @@ impl MessageService {
                     );
                 }
             }
-            TimeSyncPayload::StatusQuery => {
-                Self::respond_to_status_query(message_router, message).await;
-            }
-            _ => {
-                tracing::debug!("Cloud ignoring time sync message type: {:?}", sync_payload);
-            }
+            TimeSyncPayload::StatusQuery => match time_service.handle_status_query(message) {
+                Ok(response) => {
+                    message_router.publish_device_message(response).await;
+                }
+                Err(e) => {
+                    tracing::error!("Failed to handle time status query: {}", e);
+                }
+            },
+            _ => tracing::debug!("Cloud ignoring time sync message type: {:?}", sync_payload),
         }
 
         Self::audit_time_sync(storage, message).await?;
         Ok(())
     }
 
-    async fn respond_to_edge_time_request(
-        message_router: &MessageRouter,
-        request: &Message,
-        sequence: u32,
-    ) {
-        let now = OffsetDateTime::now_utc();
-        
-        let response = Message {
-            header: MessageHeader {
-                id: Uuid::new_v4(),
-                timestamp: now,
-                priority: Priority::Emergency,
-                source: NodeId::Cloud,
-                target: request.header.source,
-            },
-            payload: MessagePayload::TimeSync(TimeSyncPayload::Response {
-                request_sequence: sequence,
-                request_receive_time: request.header.timestamp,
-                response_send_time: now,
-                estimated_delay_ms: 25, // Typical delay from Cloud to Edge
-                accuracy_ms: 1,         // Cloud provides 1ms accuracy
-            }),
-        };
-
-        message_router.publish_device_message(response).await;
-        
-        tracing::debug!(
-            target: "time_sync",
-            edge = ?request.header.source,
-            sequence = sequence,
-            "Provided authoritative time to Edge"
-        );
-    }
-
-    async fn respond_to_status_query(message_router: &MessageRouter, query: &Message) {
-        let now = OffsetDateTime::now_utc();
-        
-        let response = Message {
-            header: MessageHeader {
-                id: Uuid::new_v4(),
-                timestamp: now,
-                priority: Priority::Regular,
-                source: NodeId::Cloud,
-                target: query.header.source,
-            },
-            payload: MessagePayload::TimeSync(TimeSyncPayload::StatusResponse {
-                is_synced: true,        // Cloud is the authoritative source, always synced
-                current_offset_ms: 0,   // Cloud offset is 0
-                last_sync_time: now,
-                accuracy_ms: 1,
-            }),
-        };
-
-        message_router.publish_device_message(response).await;
-    }
-
-    async fn audit_message(storage: &Storage, message: &Message) -> ServiceResult<()> {
+    async fn audit_message(storage: &Storage, message: &Message) -> Result<(), ApiError> {
         let event_data = serde_json::json!({
             "message_id": message.header.id,
             "source": message.header.source,
@@ -318,7 +323,7 @@ impl MessageService {
         Ok(())
     }
 
-    async fn audit_time_sync(storage: &Storage, message: &Message) -> ServiceResult<()> {
+    async fn audit_time_sync(storage: &Storage, message: &Message) -> Result<(), ApiError> {
         let event_data = serde_json::json!({
             "message_id": message.header.id,
             "source": message.header.source,
@@ -347,7 +352,7 @@ impl MessageService {
         }
     }
 
-    pub async fn stop(&mut self) -> ServiceResult<()> {
+    pub async fn stop(&mut self) -> Result<(), ApiError> {
         if let Some(tx) = self.stop_tx.take() {
             tx.send(()).map_err(|_| MessageError::ChannelClosed)?;
         }
@@ -357,8 +362,6 @@ impl MessageService {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use lumisync_api::message::*;
     use lumisync_api::{DeviceStatus, DeviceType, DeviceValue, SensorData, UserRole};
     use serde_json::json;
@@ -402,7 +405,7 @@ mod tests {
             },
             payload: MessagePayload::TimeSync(TimeSyncPayload::Request {
                 sequence: 1,
-                send_time: OffsetDateTime::now_utc(),
+                send_time: Some(OffsetDateTime::now_utc()),
                 precision_ms: 10,
             }),
         };
@@ -427,7 +430,7 @@ mod tests {
             },
             payload: MessagePayload::TimeSync(TimeSyncPayload::Request {
                 sequence: 1,
-                send_time: OffsetDateTime::now_utc(),
+                send_time: Some(OffsetDateTime::now_utc()),
                 precision_ms: 50,
             }),
         };

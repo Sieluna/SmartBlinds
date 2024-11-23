@@ -7,26 +7,73 @@ pub mod models;
 pub mod repositories;
 pub mod services;
 
+use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
+use axum::Router;
 use tokio::net::TcpListener;
+use tokio::sync::{RwLock, mpsc};
 
 use crate::app::create_app;
-use crate::configs::Settings;
+use crate::configs::{SchemaManager, Settings, Storage};
+use crate::services::{
+    MessageRouter, MessageService, TcpTransport, WebSocketState, websocket_router,
+};
 
 pub async fn run(settings: &Arc<Settings>) {
-    let app = create_app(settings).await;
+    match start_server(settings).await {
+        Ok(_) => tracing::info!("Server stopped gracefully"),
+        Err(e) => {
+            tracing::error!("Server failed: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
 
-    let ip_addr = settings.server.host.parse::<IpAddr>().unwrap();
+async fn start_server(
+    settings: &Arc<Settings>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Parse addresses
+    let ip_addr = settings.server.host.parse::<IpAddr>()?;
+    let http_port = settings.server.port.get(0).copied().unwrap_or(3000);
+    let tcp_port = settings.server.port.get(1).copied().unwrap_or(8080);
+    let http_addr = SocketAddr::from((ip_addr, http_port));
+    let tcp_addr = SocketAddr::from((ip_addr, tcp_port));
 
-    let address = SocketAddr::from((ip_addr, settings.server.port));
+    // Initialize storage and services
+    let storage =
+        Arc::new(Storage::new(settings.database.clone(), SchemaManager::default()).await?);
+    let (message_processor_tx, _) = mpsc::unbounded_channel();
+    let message_router = Arc::new(MessageRouter::new(message_processor_tx));
 
-    let listener = TcpListener::bind(&address).await.unwrap();
+    // Start background services
+    let (mut message_service, _) = MessageService::new(storage, message_router.clone());
+    message_service.start().await?;
 
-    tracing::info!("listening on {:?}", address);
+    let tcp_transport = TcpTransport::new(tcp_addr, message_router.clone());
+    let tcp_stop_tx = tcp_transport.start().await?;
+    tracing::info!("TCP transport started on {}", tcp_addr);
 
-    axum::serve(listener, app).await.unwrap();
+    // Create app with WebSocket support
+    let ws_state = WebSocketState {
+        message_router,
+        clients: Arc::new(RwLock::new(HashMap::new())),
+    };
+    let app = create_app(settings).await.merge(websocket_router(ws_state));
+
+    // Start HTTP server and wait for it to finish
+    let listener = TcpListener::bind(&http_addr).await?;
+    tracing::info!("HTTP server listening on {:?}", http_addr);
+
+    let http_result = axum::serve(listener, app).await;
+
+    // Cleanup
+    tracing::info!("Shutting down services...");
+    let _ = tcp_stop_tx.send(());
+    let _ = message_service.stop().await;
+
+    http_result.map_err(|e| e.into())
 }
 
 #[cfg(any(test, feature = "mock"))]
