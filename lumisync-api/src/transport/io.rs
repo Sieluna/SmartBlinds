@@ -7,11 +7,10 @@ use embedded_io_async::{ErrorType as AsyncErrorType, Read as AsyncRead, Write as
 use serde::{Deserialize, Serialize};
 
 use super::crc::crc32;
-use super::error::TransportError;
 use super::frame::FrameHeader;
 use super::protocol::Protocol;
 use super::serializers;
-use super::{DEFAULT_BUFFER_SIZE, MAX_MESSAGE_SIZE};
+use super::{DEFAULT_BUFFER_SIZE, MAX_MESSAGE_SIZE, TransportError};
 
 #[derive(Debug)]
 pub struct AsyncMessageTransport<IO> {

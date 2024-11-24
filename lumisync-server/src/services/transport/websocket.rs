@@ -7,7 +7,7 @@ use axum::extract::{State, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use futures::{SinkExt, StreamExt};
-use lumisync_api::Message;
+use lumisync_api::message::Message;
 use lumisync_api::transport::{Protocol, deserialize, serialize};
 use tokio::sync::{RwLock, mpsc};
 use uuid::Uuid;

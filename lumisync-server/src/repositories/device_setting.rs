@@ -123,7 +123,7 @@ impl DeviceSettingRepository {
 
 #[cfg(test)]
 mod tests {
-    use lumisync_api::DeviceType;
+    use lumisync_api::models::DeviceType;
     use serde_json::json;
     use time::OffsetDateTime;
 

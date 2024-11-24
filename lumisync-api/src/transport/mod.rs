@@ -1,16 +1,16 @@
 pub mod crc;
-pub mod error;
 pub mod frame;
 pub mod io;
 pub mod protocol;
 pub mod serializers;
 
 pub use crc::{Crc32, crc32};
-pub use error::TransportError;
 pub use frame::{FrameFlags, FrameHeader};
 pub use io::{AsyncMessageTransport, SyncMessageTransport};
 pub use protocol::Protocol;
 pub use serializers::{JsonSerializer, PostcardSerializer, Serializer, deserialize, serialize};
+
+use alloc::string::String;
 
 /// Default buffer size for transport operations
 pub const DEFAULT_BUFFER_SIZE: usize = 4096;
@@ -18,9 +18,51 @@ pub const DEFAULT_BUFFER_SIZE: usize = 4096;
 /// Maximum message size limit (16MB)
 pub const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransportError {
+    /// I/O operation failed
+    Io(String),
+    /// Message serialization failed
+    Serialization(String),
+    /// Message deserialization failed
+    Deserialization(String),
+    /// Buffer capacity exceeded
+    BufferFull,
+    /// Unknown protocol identifier
+    UnknownProtocol(u8),
+    /// Message exceeds size limit
+    MessageTooLarge(usize),
+    /// Protocol format violation
+    Protocol(String),
+    /// CRC checksum validation failed
+    CrcMismatch,
+}
+
+impl core::fmt::Display for TransportError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "IO error: {}", e),
+            Self::Serialization(e) => write!(f, "Serialization error: {}", e),
+            Self::Deserialization(e) => write!(f, "Deserialization error: {}", e),
+            Self::BufferFull => write!(f, "Buffer full"),
+            Self::UnknownProtocol(p) => write!(f, "Unknown protocol: {}", p),
+            Self::MessageTooLarge(size) => write!(f, "Message too large: {} bytes", size),
+            Self::Protocol(e) => write!(f, "Protocol error: {}", e),
+            Self::CrcMismatch => write!(f, "CRC checksum mismatch"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for TransportError {}
+
+pub type TransportResult<T> = core::result::Result<T, TransportError>;
+
 #[cfg(test)]
 mod async_tests {
+    use alloc::string::String;
     use alloc::vec::Vec;
+
     use serde::{Deserialize, Serialize};
 
     use super::*;
@@ -28,7 +70,7 @@ mod async_tests {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct TestMessage {
         id: u32,
-        name: alloc::string::String,
+        name: String,
         data: Vec<u8>,
     }
 
@@ -42,7 +84,6 @@ mod async_tests {
         }
     }
 
-    /// Mock IO for async testing
     #[derive(Debug)]
     struct AsyncMockIo {
         read_data: Vec<u8>,
@@ -321,7 +362,9 @@ mod async_tests {
 
 #[cfg(test)]
 mod sync_tests {
+    use alloc::string::String;
     use alloc::vec::Vec;
+
     use serde::{Deserialize, Serialize};
 
     use super::*;
@@ -329,7 +372,7 @@ mod sync_tests {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct TestMessage {
         id: u32,
-        name: alloc::string::String,
+        name: String,
         data: Vec<u8>,
     }
 
@@ -343,7 +386,6 @@ mod sync_tests {
         }
     }
 
-    /// Mock IO for sync testing
     #[derive(Debug)]
     struct SyncMockIo {
         read_data: Vec<u8>,

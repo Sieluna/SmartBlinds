@@ -40,6 +40,12 @@ impl AuthService {
     }
 }
 
+impl Default for AuthService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::models::User;

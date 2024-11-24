@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use lumisync_api::RegionRole;
+use lumisync_api::models::RegionRole;
 use sqlx::{Error, Pool, Sqlite, Transaction};
 
 use crate::configs::Storage;
@@ -158,7 +158,7 @@ impl UserRegionRepository {
 
 #[cfg(test)]
 mod tests {
-    use lumisync_api::{RegionRole, UserRole};
+    use lumisync_api::models::{RegionRole, UserRole};
 
     use crate::tests::*;
 

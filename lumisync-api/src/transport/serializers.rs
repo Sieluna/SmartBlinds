@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
-use super::error::TransportError;
+use super::TransportError;
 use super::protocol::Protocol;
 
 pub trait Serializer {
@@ -56,14 +56,17 @@ pub fn deserialize<T: for<'de> Deserialize<'de>>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use alloc::string::String;
     use alloc::vec;
+
     use serde::{Deserialize, Serialize};
+
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct TestData {
         id: u32,
-        name: alloc::string::String,
+        name: String,
         values: Vec<i32>,
     }
 
@@ -117,7 +120,6 @@ mod tests {
         let postcard_size = serialize(Protocol::Postcard, &data).unwrap().len();
         let json_size = serialize(Protocol::Json, &data).unwrap().len();
 
-        // Postcard should be more compact than JSON
         assert!(postcard_size < json_size);
     }
 }

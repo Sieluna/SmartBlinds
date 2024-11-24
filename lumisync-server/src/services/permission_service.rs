@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use lumisync_api::RegionRole;
+use lumisync_api::models::RegionRole;
 use sqlx::Error;
 
 use crate::configs::Storage;
@@ -495,7 +495,7 @@ impl PermissionService {
 
 #[cfg(test)]
 mod tests {
-    use lumisync_api::{DeviceType, UserRole};
+    use lumisync_api::models::{DeviceType, UserRole};
     use serde_json::json;
 
     use crate::tests::*;

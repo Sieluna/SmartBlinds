@@ -3,10 +3,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use lumisync_api::time::{SyncConfig, TimeSyncService};
+use lumisync_api::message::*;
+use lumisync_api::time::{SyncConfig, SyncStatus, TimeProvider, TimeSyncService};
 use lumisync_api::transport::{AsyncMessageTransport, Protocol};
 use lumisync_api::uuid::DeviceBasedUuidGenerator;
-use lumisync_api::{Message, MessagePayload, NodeId, TimeSyncPayload};
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -30,7 +30,7 @@ impl EdgeTimeProvider {
     }
 }
 
-impl lumisync_api::TimeProvider for EdgeTimeProvider {
+impl TimeProvider for EdgeTimeProvider {
     fn monotonic_time_ms(&self) -> u64 {
         self.start_time.elapsed().as_millis() as u64
     }
@@ -366,10 +366,10 @@ impl EdgeNode {
             MessagePayload::TimeSync(TimeSyncPayload::Request { sequence, .. }) => {
                 // Simple time sync response for demonstration
                 Some(Message {
-                    header: lumisync_api::MessageHeader {
+                    header: MessageHeader {
                         id: uuid::Uuid::new_v4(),
                         timestamp: OffsetDateTime::now_utc(),
-                        priority: lumisync_api::Priority::Regular,
+                        priority: Priority::Regular,
                         source: NodeId::Edge(1),
                         target: message.header.source,
                     },
@@ -383,10 +383,10 @@ impl EdgeNode {
                 })
             }
             MessagePayload::TimeSync(TimeSyncPayload::StatusQuery) => Some(Message {
-                header: lumisync_api::MessageHeader {
+                header: MessageHeader {
                     id: uuid::Uuid::new_v4(),
                     timestamp: OffsetDateTime::now_utc(),
-                    priority: lumisync_api::Priority::Regular,
+                    priority: Priority::Regular,
                     source: NodeId::Edge(1),
                     target: message.header.source,
                 },
@@ -460,10 +460,10 @@ impl EdgeNode {
 
             // Create time sync request
             let request = Message {
-                header: lumisync_api::MessageHeader {
+                header: MessageHeader {
                     id: uuid::Uuid::new_v4(),
                     timestamp: OffsetDateTime::UNIX_EPOCH,
-                    priority: lumisync_api::Priority::Regular,
+                    priority: Priority::Regular,
                     source: NodeId::Edge(1),
                     target: NodeId::Cloud,
                 },
@@ -546,7 +546,7 @@ impl EdgeNode {
     }
 
     /// Get sync status
-    pub fn get_sync_status(&self) -> lumisync_api::SyncStatus {
+    pub fn get_sync_status(&self) -> SyncStatus {
         self.time_service.get_sync_status()
     }
 

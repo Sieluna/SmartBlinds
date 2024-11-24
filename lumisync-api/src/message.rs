@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use super::{
+pub use crate::models::{
     Command, DeviceStatus, Id, RegionSettingData, SensorData, WindowData, WindowSettingData,
 };
 

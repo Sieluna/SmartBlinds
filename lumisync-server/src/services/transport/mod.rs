@@ -4,9 +4,10 @@ mod websocket;
 pub use tcp::*;
 pub use websocket::*;
 
-use lumisync_api::Message;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use lumisync_api::message::Message;
 use tokio::sync::{RwLock, mpsc};
 use uuid::Uuid;
 
@@ -52,7 +53,7 @@ impl MessageRouter {
     pub async fn publish_app_message(&self, message: Message) {
         let subscribers = self.app_subscribers.read().await;
         for (id, sender) in subscribers.iter() {
-            if let Err(_) = sender.send(message.clone()) {
+            if sender.send(message.clone()).is_err() {
                 tracing::warn!("Failed to send message to app subscriber: {}", id);
             }
         }
@@ -61,14 +62,14 @@ impl MessageRouter {
     pub async fn publish_device_message(&self, message: Message) {
         let subscribers = self.device_subscribers.read().await;
         for (id, sender) in subscribers.iter() {
-            if let Err(_) = sender.send(message.clone()) {
+            if sender.send(message.clone()).is_err() {
                 tracing::warn!("Failed to send message to device subscriber: {}", id);
             }
         }
     }
 
     pub async fn process_incoming_message(&self, message: Message) {
-        if let Err(_) = self.message_processor.send(message) {
+        if self.message_processor.send(message).is_err() {
             tracing::error!("Failed to send message to processor");
         }
     }

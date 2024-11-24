@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::routing::get;
 use axum::{Extension, Router, middleware};
 
-use lumisync_api::UserRole;
+use lumisync_api::models::UserRole;
 use lumisync_server::configs::{Auth, Database, SchemaManager, Storage};
 use lumisync_server::handles::*;
 use lumisync_server::middlewares::{TokenState, auth};

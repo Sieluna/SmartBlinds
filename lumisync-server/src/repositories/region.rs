@@ -180,7 +180,7 @@ impl RegionRepository {
 
 #[cfg(test)]
 mod tests {
-    use lumisync_api::UserRole;
+    use lumisync_api::models::UserRole;
 
     use crate::tests::*;
 

@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use super::error::TransportError;
+use super::TransportError;
 use super::protocol::Protocol;
 
 #[derive(Debug, Clone, Copy)]

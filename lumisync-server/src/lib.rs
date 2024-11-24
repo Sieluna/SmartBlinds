@@ -34,9 +34,16 @@ async fn start_server(
     settings: &Arc<Settings>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Parse addresses
+    const DEFAULT_HTTP: u16 = 3000;
+    const DEFAULT_TCP: u16 = 8080;
+
     let ip_addr = settings.server.host.parse::<IpAddr>()?;
-    let http_port = settings.server.port.get(0).copied().unwrap_or(3000);
-    let tcp_port = settings.server.port.get(1).copied().unwrap_or(8080);
+    let ports = &settings.server.port;
+    let [http_port, tcp_port] = match ports.as_slice() {
+        [http, tcp, ..] => [*http, *tcp],
+        [http] => [*http, DEFAULT_TCP],
+        _ => [DEFAULT_HTTP, DEFAULT_TCP],
+    };
     let http_addr = SocketAddr::from((ip_addr, http_port));
     let tcp_addr = SocketAddr::from((ip_addr, tcp_port));
 
@@ -79,7 +86,7 @@ async fn start_server(
 pub mod tests {
     use std::sync::Arc;
 
-    use lumisync_api::{DeviceType, UserRole};
+    use lumisync_api::models::{DeviceType, UserRole};
     use serde_json::{Value, json};
     use time::OffsetDateTime;
 

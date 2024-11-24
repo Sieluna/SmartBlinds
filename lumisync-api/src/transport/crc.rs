@@ -6,7 +6,6 @@ pub struct Crc32 {
 impl Crc32 {
     const POLYNOMIAL: u32 = 0xEDB88320;
 
-    /// Creates a new CRC-32 instance with pre-computed lookup table
     pub fn new() -> Self {
         let mut table = [0u32; 256];
 

@@ -1,5 +1,5 @@
 use embedded_io_adapters::tokio_1::FromTokio;
-use lumisync_api::Message;
+use lumisync_api::message::Message;
 use lumisync_api::transport::{AsyncMessageTransport, Protocol};
 use std::net::SocketAddr;
 use std::sync::Arc;

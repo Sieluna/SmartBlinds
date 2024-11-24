@@ -3,10 +3,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use lumisync_api::time::{SyncConfig, TimeSyncService};
+use lumisync_api::message::{Message, MessagePayload, NodeId, TimeSyncPayload};
+use lumisync_api::time::{SyncConfig, TimeProvider, TimeSyncService};
 use lumisync_api::transport::{AsyncMessageTransport, Protocol};
 use lumisync_api::uuid::RandomUuidGenerator;
-use lumisync_api::{Message, MessagePayload, NodeId, TimeSyncPayload};
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -16,11 +16,10 @@ type DeviceConnections = Arc<Mutex<HashMap<String, Instant>>>;
 type SharedMetrics = Arc<Mutex<CloudMetrics>>;
 type RunningFlag = Arc<AtomicBool>;
 
-/// Cloud time provider with authoritative time source
 #[derive(Clone)]
 pub struct CloudTimeProvider;
 
-impl lumisync_api::TimeProvider for CloudTimeProvider {
+impl TimeProvider for CloudTimeProvider {
     fn monotonic_time_ms(&self) -> u64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -37,7 +36,6 @@ impl lumisync_api::TimeProvider for CloudTimeProvider {
     }
 }
 
-/// Cloud node configuration
 #[derive(Debug, Clone)]
 pub struct CloudNodeConfig {
     pub listen_port: u16,
@@ -62,7 +60,6 @@ impl Default for CloudNodeConfig {
     }
 }
 
-/// Cloud node metrics
 #[derive(Debug, Clone, Default)]
 pub struct CloudMetrics {
     pub total_sync_requests: u64,
@@ -71,7 +68,6 @@ pub struct CloudMetrics {
     pub active_connections: u64,
 }
 
-/// TCP adapter for async transport
 pub struct TcpAdapter {
     stream: TcpStream,
 }
@@ -102,7 +98,6 @@ impl embedded_io_async::Write for TcpAdapter {
     }
 }
 
-/// Cloud node for time synchronization
 pub struct CloudNode {
     config: CloudNodeConfig,
     active_connections: DeviceConnections,

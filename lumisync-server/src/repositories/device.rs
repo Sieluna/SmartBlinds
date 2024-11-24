@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use lumisync_api::DeviceType;
+use lumisync_api::models::DeviceType;
 use serde_json::Value;
 use sqlx::{Error, Pool, Sqlite, Transaction};
 
@@ -159,7 +159,7 @@ impl DeviceRepository {
 
 #[cfg(test)]
 mod tests {
-    use lumisync_api::DeviceType;
+    use lumisync_api::models::DeviceType;
     use serde_json::json;
 
     use crate::tests::*;

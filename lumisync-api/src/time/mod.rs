@@ -63,7 +63,8 @@ mod tests {
 
     use time::OffsetDateTime;
 
-    use crate::{NodeId, uuid::DeviceBasedUuidGenerator};
+    use crate::message::NodeId;
+    use crate::uuid::DeviceBasedUuidGenerator;
 
     use super::*;
 

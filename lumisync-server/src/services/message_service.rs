@@ -1,12 +1,10 @@
 use std::collections::BTreeMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use lumisync_api::message::*;
 use lumisync_api::time::{SyncConfig, TimeProvider, TimeSyncService};
 use lumisync_api::uuid::RandomUuidGenerator;
-use lumisync_api::{DeviceStatus, Id};
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
 
@@ -71,9 +69,12 @@ impl MessageService {
             failure_cooldown_ms: 30000, // 30 seconds cooldown
         };
 
-        let time_provider = SystemTimeProvider::default();
-
-        TimeSyncService::new(time_provider, NodeId::Cloud, config, RandomUuidGenerator)
+        TimeSyncService::new(
+            SystemTimeProvider,
+            NodeId::Cloud,
+            config,
+            RandomUuidGenerator,
+        )
     }
 
     pub async fn start(&mut self) -> Result<(), ApiError> {
@@ -205,7 +206,7 @@ impl MessageService {
         device_id: Id,
         status: &DeviceStatus,
     ) -> Result<(), ApiError> {
-        let data = serde_json::to_value(&status).map_err(MessageError::Serialization)?;
+        let data = serde_json::to_value(status).map_err(MessageError::Serialization)?;
 
         sqlx::query("INSERT INTO device_records (device_id, data, time) VALUES (?, ?, ?)")
             .bind(device_id)
@@ -344,7 +345,7 @@ impl MessageService {
 #[cfg(test)]
 mod tests {
     use lumisync_api::message::*;
-    use lumisync_api::{DeviceStatus, DeviceType, DeviceValue, SensorData, UserRole};
+    use lumisync_api::models::*;
     use serde_json::json;
     use time::OffsetDateTime;
     use uuid::Uuid;

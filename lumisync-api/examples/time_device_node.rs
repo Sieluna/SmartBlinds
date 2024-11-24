@@ -2,9 +2,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
+use lumisync_api::message::*;
+use lumisync_api::time::TimeProvider;
 use lumisync_api::transport::{AsyncMessageTransport, Protocol};
-use lumisync_api::uuid::DeviceBasedUuidGenerator;
-use lumisync_api::{Message, MessagePayload, NodeId, TimeSyncPayload, UuidGenerator};
+use lumisync_api::uuid::{DeviceBasedUuidGenerator, UuidGenerator};
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -33,7 +34,7 @@ impl DeviceTimeProvider {
     }
 }
 
-impl lumisync_api::TimeProvider for DeviceTimeProvider {
+impl TimeProvider for DeviceTimeProvider {
     fn monotonic_time_ms(&self) -> u64 {
         self.uptime_ms()
     }
@@ -299,10 +300,10 @@ impl SimpleDevice {
                     let time_sync = time_sync.lock().await;
 
                     Message {
-                        header: lumisync_api::MessageHeader {
+                        header: MessageHeader {
                             id: uuid_generator.generate(),
                             timestamp: time_sync.get_current_time(),
-                            priority: lumisync_api::Priority::Regular,
+                            priority: Priority::Regular,
                             source: NodeId::Device(device_mac),
                             target: NodeId::Edge(1),
                         },
@@ -357,10 +358,10 @@ impl SimpleDevice {
                     let time_sync = time_sync.lock().await;
 
                     Message {
-                        header: lumisync_api::MessageHeader {
+                        header: MessageHeader {
                             id: uuid_generator.generate(),
                             timestamp: time_sync.get_current_time(),
-                            priority: lumisync_api::Priority::Regular,
+                            priority: Priority::Regular,
                             source: NodeId::Device(device_mac),
                             target: NodeId::Edge(1),
                         },
