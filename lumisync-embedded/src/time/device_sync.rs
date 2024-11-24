@@ -21,13 +21,13 @@ pub struct DeviceTimeSync {
     time_provider: EmbeddedTimeProvider,
     /// Device MAC address
     pub device_mac: [u8; 6],
-    /// Time offset (milliseconds) - local time needs to add this offset to get synchronized time
+    /// Time offset in milliseconds
     pub time_offset_ms: i64,
-    /// Last sync time (local timestamp)
+    /// Last sync time in local timestamp
     pub last_sync_time: Option<u64>,
     /// Synchronization state
     pub sync_state: DeviceSyncState,
-    /// Sync expiry threshold (milliseconds)
+    /// Sync expiry threshold in milliseconds
     pub sync_expiry_threshold_ms: u64,
 }
 
@@ -68,32 +68,16 @@ impl DeviceTimeSync {
             _ => return Err(Error::InvalidCommand),                           // Wrong target
         }
 
-        if let MessagePayload::TimeSync(TimeSyncPayload::Broadcast {
-            timestamp,
-            offset_ms,
-            accuracy_ms: _,
-        }) = &message.payload
+        if let MessagePayload::TimeSync(TimeSyncPayload::Broadcast { timestamp, .. }) =
+            &message.payload
         {
-            let current_uptime = self.time_provider.uptime_ms();
-
-            // Convert timestamp to milliseconds since Unix epoch
+            let current_uptime = self.time_provider.monotonic_time_ms();
             let timestamp_ms =
                 timestamp.unix_timestamp() as u64 * 1000 + timestamp.millisecond() as u64;
 
-            // The broadcast message contains:
-            // - timestamp: Current time at the edge node
-            // - offset_ms: Edge node's time offset relative to cloud/true time
-            //
-            // To synchronize, we need to calculate what offset to apply to our uptime
-            // so that (uptime + our_offset) gives us the true time.
-            //
-            // True time = timestamp + offset_ms
-            // We want: uptime + our_offset = true_time
-            // Therefore: our_offset = true_time - uptime
-            let true_time_ms = timestamp_ms as i64 + offset_ms;
-            let new_offset = true_time_ms - current_uptime as i64;
+            // Calculate device offset to match edge's synchronized time
+            let new_offset = timestamp_ms as i64 - current_uptime as i64;
 
-            // Apply new offset
             self.time_offset_ms = new_offset;
             self.last_sync_time = Some(current_uptime);
             self.sync_state = DeviceSyncState::Synced;
@@ -104,29 +88,29 @@ impl DeviceTimeSync {
         }
     }
 
-    /// Directly set time offset (for testing)
+    /// Set time offset directly (for testing)
     pub fn set_time_offset(&mut self, offset_ms: i64) {
         self.time_offset_ms = offset_ms;
-        self.last_sync_time = Some(self.time_provider.uptime_ms());
+        self.last_sync_time = Some(self.time_provider.monotonic_time_ms());
         self.sync_state = DeviceSyncState::Synced;
     }
 
-    /// Update synchronization state check
+    /// Update synchronization state based on expiry
     pub fn update_sync_state(&mut self) {
         if let Some(last_sync) = self.last_sync_time {
-            let current_time = self.time_provider.uptime_ms();
+            let current_time = self.time_provider.monotonic_time_ms();
             if current_time.saturating_sub(last_sync) > self.sync_expiry_threshold_ms {
                 self.sync_state = DeviceSyncState::Expired;
             }
         }
     }
 
-    /// Whether synchronized (includes expiry check)
+    /// Check if device is synchronized
     pub fn is_synced(&self) -> bool {
         match self.sync_state {
             DeviceSyncState::Synced => {
                 if let Some(last_sync) = self.last_sync_time {
-                    let current_time = self.time_provider.uptime_ms();
+                    let current_time = self.time_provider.monotonic_time_ms();
                     current_time.saturating_sub(last_sync) <= self.sync_expiry_threshold_ms
                 } else {
                     false
@@ -136,9 +120,9 @@ impl DeviceTimeSync {
         }
     }
 
-    /// Get adjusted current time
+    /// Get current synchronized time
     pub fn get_current_time(&self) -> OffsetDateTime {
-        let current_uptime = self.time_provider.uptime_ms();
+        let current_uptime = self.time_provider.monotonic_time_ms();
         let adjusted_time = (current_uptime as i64 + self.time_offset_ms) as u64;
 
         OffsetDateTime::from_unix_timestamp_nanos((adjusted_time as i128) * 1_000_000)
@@ -147,7 +131,7 @@ impl DeviceTimeSync {
 
     /// Get relative timestamp (milliseconds since device boot)
     pub fn get_relative_timestamp(&self) -> u64 {
-        self.time_provider.uptime_ms()
+        self.time_provider.monotonic_time_ms()
     }
 
     /// Reset synchronization state

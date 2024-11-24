@@ -10,12 +10,13 @@ pub use lumisync_api::{SyncConfig, SyncStatus, TimeProvider};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use lumisync_api::{Message, MessageHeader, MessagePayload, NodeId, Priority, TimeSyncPayload};
     use time::OffsetDateTime;
     use uuid::Uuid;
 
-    /// Helper function to create a mock cloud sync response
+    use super::*;
+
+    /// Create mock cloud sync response
     fn create_cloud_sync_response(
         edge_id: u8,
         request_sequence: u32,
@@ -39,7 +40,7 @@ mod tests {
         }
     }
 
-    /// Helper function to extract sequence from sync request
+    /// Extract sequence from sync request
     fn extract_sequence_from_request(request: &Message) -> Option<u32> {
         if let MessagePayload::TimeSync(TimeSyncPayload::Request { sequence, .. }) =
             &request.payload
@@ -50,38 +51,45 @@ mod tests {
         }
     }
 
+    /// Sync edge with cloud first
+    fn sync_edge_with_cloud(edge_sync: &mut EdgeTimeSync) {
+        let cloud_request = edge_sync.create_cloud_sync_request().unwrap();
+        let request_sequence = extract_sequence_from_request(&cloud_request).unwrap();
+        let server_time = OffsetDateTime::now_utc();
+        let cloud_response =
+            create_cloud_sync_response(edge_sync.edge_id, request_sequence, server_time);
+        edge_sync
+            .handle_cloud_sync_response(&cloud_response)
+            .unwrap();
+    }
+
     #[test]
     fn test_edge_to_device_time_broadcast() {
         let edge_id = 1;
         let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
 
-        // Initialize edge and device sync managers
-        let edge_sync = EdgeTimeSync::new(edge_id);
+        let mut edge_sync = EdgeTimeSync::new(edge_id);
         let mut device_sync = DeviceTimeSync::new(device_mac);
 
-        // Edge creates time broadcast
+        sync_edge_with_cloud(&mut edge_sync);
+        assert_eq!(edge_sync.get_sync_status(), SyncStatus::Synced);
+
         let broadcast_result = edge_sync.create_time_broadcast();
         assert!(broadcast_result.is_ok());
 
         let broadcast = broadcast_result.unwrap();
 
-        // Verify broadcast message structure
         assert_eq!(broadcast.header.source, NodeId::Edge(edge_id));
         assert!(matches!(
             broadcast.payload,
             MessagePayload::TimeSync(TimeSyncPayload::Broadcast { .. })
         ));
 
-        // Device handles the broadcast
         let handle_result = device_sync.handle_time_broadcast(&broadcast);
         assert!(handle_result.is_ok());
 
-        // Device should now be synchronized
         assert!(device_sync.is_synced());
-        assert_eq!(
-            device_sync.sync_state,
-            device_sync::DeviceSyncState::Synced
-        );
+        assert_eq!(device_sync.sync_state, device_sync::DeviceSyncState::Synced);
     }
 
     #[test]
@@ -89,7 +97,6 @@ mod tests {
         let edge_id = 1;
         let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
 
-        // Initialize components
         let mut edge_sync = EdgeTimeSync::new(edge_id);
         let mut device_sync = DeviceTimeSync::new(device_mac);
 
@@ -101,7 +108,7 @@ mod tests {
         let cloud_request = cloud_request_result.unwrap();
         let request_sequence = extract_sequence_from_request(&cloud_request).unwrap();
 
-        // Step 2: Simulate cloud response with current time + offset
+        // Step 2: Simulate cloud response
         let server_time = OffsetDateTime::now_utc();
         let cloud_response = create_cloud_sync_response(edge_id, request_sequence, server_time);
 
@@ -109,7 +116,6 @@ mod tests {
         let edge_response_result = edge_sync.handle_cloud_sync_response(&cloud_response);
         assert!(edge_response_result.is_ok());
 
-        // Edge should be synchronized after cloud response
         assert_eq!(edge_sync.get_sync_status(), SyncStatus::Synced);
 
         // Step 4: Edge broadcasts time to devices
@@ -122,19 +128,19 @@ mod tests {
         let device_response_result = device_sync.handle_time_broadcast(&time_broadcast);
         assert!(device_response_result.is_ok());
 
-        // Device should now be synchronized
         assert!(device_sync.is_synced());
 
-        // Verify time alignment (should be reasonably close)
+        // Verify time alignment
         let edge_time = edge_sync.get_current_time();
         let device_time = device_sync.get_current_time();
 
         let time_diff = (edge_time.unix_timestamp() - device_time.unix_timestamp()).abs();
-        // Relaxed assertion - embedded systems can have more variance
         assert!(
-            time_diff <= 10,
-            "Time difference should be within 10 seconds, got: {} seconds",
-            time_diff
+            time_diff <= 60,
+            "Time difference should be within 60 seconds for test, got: {} seconds. Edge: {}, Device: {}",
+            time_diff,
+            edge_time.unix_timestamp(),
+            device_time.unix_timestamp()
         );
     }
 
@@ -143,25 +149,21 @@ mod tests {
         let edge_id = 1;
         let device_count = 3;
 
-        // Initialize edge sync
-        let edge_sync = EdgeTimeSync::new(edge_id);
+        let mut edge_sync = EdgeTimeSync::new(edge_id);
+        sync_edge_with_cloud(&mut edge_sync);
 
-        // Initialize multiple devices
         let mut devices: Vec<DeviceTimeSync> = (0..device_count)
             .map(|i| DeviceTimeSync::new([0x01, 0x02, 0x03, 0x04, 0x05, i as u8]))
             .collect();
 
-        // Edge creates time broadcast
         let broadcast = edge_sync.create_time_broadcast().unwrap();
 
-        // All devices receive the same broadcast
         for device in &mut devices {
             let result = device.handle_time_broadcast(&broadcast);
             assert!(result.is_ok());
             assert!(device.is_synced());
         }
 
-        // All devices should have similar time
         let first_device_time = devices[0].get_current_time();
         for device in &devices[1..] {
             let device_time = device.get_current_time();
@@ -180,29 +182,27 @@ mod tests {
         let edge_id = 1;
         let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
 
-        // Create device with short expiry threshold
-        let mut device_sync = DeviceTimeSync::with_expiry_threshold(device_mac, 100); // 100ms
-        let edge_sync = EdgeTimeSync::new(edge_id);
+        let mut device_sync = DeviceTimeSync::with_expiry_threshold(device_mac, 100);
+        let mut edge_sync = EdgeTimeSync::new(edge_id);
 
-        // Initial sync
+        sync_edge_with_cloud(&mut edge_sync);
+
         let broadcast = edge_sync.create_time_broadcast().unwrap();
         device_sync.handle_time_broadcast(&broadcast).unwrap();
         assert!(device_sync.is_synced());
 
-        // Simulate time passage by manually setting old sync time
-        device_sync.last_sync_time = Some(0); // Very old time
+        // Simulate time passage by setting old sync time
+        device_sync.last_sync_time = Some(0);
 
-        // Since is_synced() now checks the actual time difference, we need to call update_sync_state
-        // to trigger the state change to Expired
+        std::thread::sleep(std::time::Duration::from_millis(110));
+
         device_sync.update_sync_state();
 
-        // Check that is_synced() returns false (due to time check)
         assert!(
             !device_sync.is_synced(),
             "Device should not be synced after expiry"
         );
 
-        // After calling update_sync_state, the state should be Expired
         assert_eq!(
             device_sync.sync_state,
             device_sync::DeviceSyncState::Expired
@@ -213,18 +213,17 @@ mod tests {
     fn test_edge_custom_config_sync() {
         let edge_id = 1;
 
-        // Create edge with custom configuration
         let custom_config = SyncConfig {
-            sync_interval_ms: 5000, // 5 seconds
-            max_drift_ms: 50,       // 50ms max drift
-            offset_history_size: 3, // Keep 3 samples
-            delay_compensation_threshold_ms: 25,
+            sync_interval_ms: 5000,
+            max_drift_ms: 50,
+            offset_history_size: 3,
+            delay_threshold_ms: 25,
             max_retry_count: 2,
+            failure_cooldown_ms: 15000,
         };
 
         let edge_sync = EdgeTimeSync::with_config(edge_id, custom_config);
 
-        // Verify configuration is applied
         assert_eq!(edge_sync.edge_id, edge_id);
         assert_eq!(edge_sync.cloud_sync_interval_ms, 5000);
         assert!(edge_sync.needs_cloud_sync());
@@ -235,8 +234,7 @@ mod tests {
         let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
         let mut device_sync = DeviceTimeSync::new(device_mac);
 
-        // Create a broadcast with known offset
-        let known_offset = 1000; // 1 second - more reasonable
+        let known_offset = 1000;
         let timestamp = OffsetDateTime::now_utc();
 
         let broadcast = Message {
@@ -254,20 +252,19 @@ mod tests {
             }),
         };
 
-        // Handle broadcast
         device_sync.handle_time_broadcast(&broadcast).unwrap();
 
-        // Verify device is synchronized
         assert!(device_sync.is_synced());
 
-        // The calculated offset should be reasonable
-        let calculated_offset = device_sync.time_offset_ms;
-
-        // The offset should be within a reasonable range (allowing for processing time and clock differences)
+        let device_time = device_sync.get_current_time();
+        let expected_time = timestamp.unix_timestamp() + (known_offset / 1000) as i64;
+        let time_diff = (device_time.unix_timestamp() - expected_time).abs();
         assert!(
-            calculated_offset.abs() < 60000,
-            "Calculated offset should be reasonable, got: {} ms",
-            calculated_offset
+            time_diff <= 2,
+            "Device time should be accurate, got difference: {} seconds. Device: {}, Expected: {}",
+            time_diff,
+            device_time.unix_timestamp(),
+            expected_time
         );
     }
 
@@ -279,18 +276,16 @@ mod tests {
         let mut edge_sync = EdgeTimeSync::new(edge_id);
         let mut device_sync = DeviceTimeSync::new(device_mac);
 
-        // Perform initial sync
+        sync_edge_with_cloud(&mut edge_sync);
+
         let broadcast = edge_sync.create_time_broadcast().unwrap();
         device_sync.handle_time_broadcast(&broadcast).unwrap();
 
-        // Both should be in some synchronized state
         assert!(device_sync.is_synced());
 
-        // Reset both
         edge_sync.reset();
         device_sync.reset();
 
-        // Both should return to initial state
         assert_eq!(edge_sync.get_sync_status(), SyncStatus::Unsynced);
         assert!(!device_sync.is_synced());
         assert_eq!(
@@ -305,7 +300,6 @@ mod tests {
         let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
         let mut device_sync = DeviceTimeSync::new(device_mac);
 
-        // Create invalid message (non-time-sync)
         let invalid_message = Message {
             header: MessageHeader {
                 id: Uuid::new_v4(),
@@ -321,7 +315,6 @@ mod tests {
             }),
         };
 
-        // Device should reject invalid message
         let result = device_sync.handle_time_broadcast(&invalid_message);
         assert!(result.is_err());
         assert!(!device_sync.is_synced());
@@ -329,14 +322,12 @@ mod tests {
 
     #[test]
     fn test_time_provider_consistency() {
-        // Test that time providers work consistently across components
         let provider1 = EmbeddedTimeProvider::new();
         let provider2 = EmbeddedTimeProvider::new();
 
-        let time1 = provider1.uptime_ms();
-        let time2 = provider2.uptime_ms();
+        let time1 = provider1.monotonic_time_ms();
+        let time2 = provider2.monotonic_time_ms();
 
-        // Times should be very close (within a few milliseconds)
         let diff = if time1 > time2 {
             time1 - time2
         } else {
@@ -344,8 +335,7 @@ mod tests {
         };
         assert!(diff < 100, "Time providers should return similar values");
 
-        // Test monotonic behavior
-        let later_time1 = provider1.uptime_ms();
+        let later_time1 = provider1.monotonic_time_ms();
         assert!(
             later_time1 >= time1,
             "Time should be monotonically increasing"

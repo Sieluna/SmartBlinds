@@ -37,25 +37,6 @@ impl TimeProvider for SystemTimeProvider {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct MessageServiceConfig {
-    pub websocket_addr: SocketAddr,
-    pub tcp_addr: SocketAddr,
-    pub enable_websocket: bool,
-    pub enable_tcp: bool,
-}
-
-impl Default for MessageServiceConfig {
-    fn default() -> Self {
-        Self {
-            websocket_addr: "127.0.0.1:8080".parse().unwrap(),
-            tcp_addr: "127.0.0.1:9000".parse().unwrap(),
-            enable_websocket: true,
-            enable_tcp: true,
-        }
-    }
-}
-
 pub struct MessageService {
     storage: Arc<Storage>,
     message_router: Arc<MessageRouter>,

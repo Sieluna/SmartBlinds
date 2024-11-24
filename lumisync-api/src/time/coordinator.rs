@@ -1,4 +1,5 @@
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 use crate::message::*;
 use crate::uuid::{DeviceBasedUuidGenerator, UuidGenerator};

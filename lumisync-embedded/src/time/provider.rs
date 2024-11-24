@@ -19,7 +19,7 @@ impl EmbeddedTimeProvider {
 }
 
 impl TimeProvider for EmbeddedTimeProvider {
-    fn uptime_ms(&self) -> u64 {
+    fn monotonic_time_ms(&self) -> u64 {
         self.elapsed_ms()
     }
 }
@@ -37,13 +37,13 @@ mod tests {
     #[test]
     fn test_provider_monotonic() {
         let provider = EmbeddedTimeProvider::new();
-        let time1 = provider.uptime_ms();
+        let time1 = provider.monotonic_time_ms();
 
         for _ in 0..1000 {
             core::hint::spin_loop();
         }
 
-        let time2 = provider.uptime_ms();
+        let time2 = provider.monotonic_time_ms();
 
         assert!(time2 >= time1);
     }
