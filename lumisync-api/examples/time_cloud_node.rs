@@ -11,6 +11,7 @@ use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
+use tokio::signal;
 
 type DeviceConnections = Arc<Mutex<HashMap<String, Instant>>>;
 type SharedMetrics = Arc<Mutex<CloudMetrics>>;
@@ -49,8 +50,8 @@ impl Default for CloudNodeConfig {
             listen_port: 8080,
             max_connections: 100,
             sync_config: SyncConfig {
-                sync_interval_ms: 30000, // 30 seconds
-                max_drift_ms: 1000,      // 1 second
+                sync_interval_ms: 30000,
+                max_drift_ms: 1000,
                 offset_history_size: 10,
                 delay_threshold_ms: 100,
                 max_retry_count: 3,
@@ -115,61 +116,67 @@ impl CloudNode {
         }
     }
 
-    /// Start cloud service
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.is_running.store(true, Ordering::SeqCst);
 
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.config.listen_port)).await?;
         println!("Cloud node listening on port {}", self.config.listen_port);
 
-        // Start metrics task
         self.start_metrics_task().await;
 
-        // Main service loop
         loop {
-            if !self.is_running.load(Ordering::SeqCst) {
-                break;
-            }
+            tokio::select! {
+                result = listener.accept() => {
+                    match result {
+                        Ok((stream, addr)) => {
+                            println!("New connection from: {}", addr);
+                            let connections = Arc::clone(&self.active_connections);
+                            let metrics = Arc::clone(&self.metrics);
+                            let sync_config = self.config.sync_config.clone();
+                            let is_running = Arc::clone(&self.is_running);
 
-            match listener.accept().await {
-                Ok((stream, addr)) => {
-                    println!("New connection from: {}", addr);
-                    let connections = Arc::clone(&self.active_connections);
-                    let metrics = Arc::clone(&self.metrics);
-                    let sync_config = self.config.sync_config.clone();
-
-                    tokio::spawn(async move {
-                        if let Err(e) = Self::handle_connection(
-                            stream,
-                            addr.to_string(),
-                            connections,
-                            metrics,
-                            sync_config,
-                        )
-                        .await
-                        {
-                            eprintln!("Error handling connection from {}: {}", addr, e);
+                            tokio::spawn(async move {
+                                if let Err(e) = Self::handle_connection(
+                                    stream,
+                                    addr.to_string(),
+                                    connections,
+                                    metrics,
+                                    sync_config,
+                                    is_running,
+                                )
+                                .await
+                                {
+                                    eprintln!("Connection error: {}", e);
+                                }
+                            });
                         }
-                    });
+                        Err(e) => eprintln!("Failed to accept connection: {}", e),
+                    }
                 }
-                Err(e) => {
-                    eprintln!("Failed to accept connection: {}", e);
+                _ = signal::ctrl_c() => {
+                    println!("Received shutdown signal, stopping cloud node...");
+                    break;
+                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+                    if !self.is_running.load(Ordering::SeqCst) {
+                        break;
+                    }
                 }
             }
         }
 
+        self.shutdown().await;
         Ok(())
     }
 
-    /// Handle client connection
     async fn handle_connection(
         stream: TcpStream,
         addr: String,
         connections: DeviceConnections,
         metrics: SharedMetrics,
         sync_config: SyncConfig,
+        is_running: RunningFlag,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Register connection
         {
             let mut conns = connections.lock().await;
             conns.insert(addr.clone(), Instant::now());
@@ -180,102 +187,74 @@ impl CloudNode {
             .with_default_protocol(Protocol::Postcard)
             .with_crc(true);
 
-        // Create time service for this connection
         let time_provider = CloudTimeProvider;
         let uuid_generator = RandomUuidGenerator;
         let mut time_service =
             TimeSyncService::new(time_provider, NodeId::Cloud, sync_config, uuid_generator);
 
-        loop {
-            match transport.receive_message::<Message>().await {
-                Ok((message, _protocol, _stream_id)) => {
-                    println!(
-                        "Received message from {}: {:?}",
-                        addr, message.header.source
-                    );
+        while is_running.load(Ordering::SeqCst) {
+            tokio::select! {
+                result = transport.receive_message::<Message>() => {
+                    match result {
+                        Ok((message, _protocol, _stream_id)) => {
+                            {
+                                let mut conns = connections.lock().await;
+                                conns.insert(addr.clone(), Instant::now());
+                            }
 
-                    // Update connection activity
-                    {
-                        let mut conns = connections.lock().await;
-                        conns.insert(addr.clone(), Instant::now());
-                    }
+                            if let Some(response) = Self::process_message(&mut time_service, &message) {
+                                if transport
+                                    .send_message(&response, Some(Protocol::Postcard), None)
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
 
-                    // Process time sync message
-                    if let Some(response) = Self::process_message(&mut time_service, &message) {
-                        if let Err(e) = transport
-                            .send_message(&response, Some(Protocol::Postcard), None)
-                            .await
-                        {
-                            eprintln!("Failed to send response: {}", e);
-                            break;
+                                {
+                                    let mut metrics = metrics.lock().await;
+                                    metrics.successful_syncs += 1;
+                                    metrics.total_sync_requests += 1;
+                                }
+                            }
                         }
-
-                        println!("Sent time sync response to {}", addr);
-
-                        // Update metrics
-                        {
-                            let mut metrics = metrics.lock().await;
-                            metrics.successful_syncs += 1;
-                            metrics.total_sync_requests += 1;
-                        }
+                        Err(_) => break,
                     }
                 }
-                Err(e) => {
-                    eprintln!("Failed to receive message from {}: {}", addr, e);
-                    break;
-                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(30)) => continue,
             }
         }
 
-        // Cleanup connection
         {
             let mut conns = connections.lock().await;
             conns.remove(&addr);
         }
 
-        println!("Connection closed: {}", addr);
         Ok(())
     }
 
-    /// Process incoming message
     fn process_message(
         time_service: &mut TimeSyncService<CloudTimeProvider, RandomUuidGenerator>,
         message: &Message,
     ) -> Option<Message> {
         match &message.payload {
             MessagePayload::TimeSync(TimeSyncPayload::Request { .. }) => {
-                match time_service.handle_sync_request(message) {
-                    Ok(response) => Some(response),
-                    Err(e) => {
-                        eprintln!("Failed to handle sync request: {}", e);
-                        None
-                    }
-                }
+                time_service.handle_sync_request(message).ok()
             }
             MessagePayload::TimeSync(TimeSyncPayload::StatusQuery) => {
-                match time_service.handle_status_query(message) {
-                    Ok(response) => Some(response),
-                    Err(e) => {
-                        eprintln!("Failed to handle status query: {}", e);
-                        None
-                    }
-                }
+                time_service.handle_status_query(message).ok()
             }
-            _ => {
-                println!("Unhandled message type: {:?}", message.payload);
-                None
-            }
+            _ => None,
         }
     }
 
-    /// Start metrics collection task
     async fn start_metrics_task(&self) {
         let metrics = Arc::clone(&self.metrics);
         let connections = Arc::clone(&self.active_connections);
         let is_running = Arc::clone(&self.is_running);
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
 
             while is_running.load(Ordering::SeqCst) {
                 interval.tick().await;
@@ -290,25 +269,16 @@ impl CloudNode {
                     metrics.active_connections = active_count;
                 }
 
-                println!(
-                    "Metrics - Active connections: {}, Total sync requests: {}",
-                    active_count,
-                    {
-                        let metrics = metrics.lock().await;
-                        metrics.total_sync_requests
-                    }
-                );
+                println!("Active connections: {}", active_count);
             }
         });
     }
 
-    /// Get current metrics
     pub async fn get_metrics(&self) -> CloudMetrics {
         self.metrics.lock().await.clone()
     }
 
-    /// Graceful shutdown
-    pub async fn shutdown(&mut self) {
+    async fn shutdown(&mut self) {
         println!("Shutting down cloud node...");
         self.is_running.store(false, Ordering::SeqCst);
 
@@ -321,23 +291,16 @@ impl CloudNode {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = CloudNodeConfig::default();
 
-    // Parse command line arguments
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--port" | "-p" => {
                 if i + 1 < args.len() {
-                    match args[i + 1].parse::<u16>() {
-                        Ok(port) => {
-                            config.listen_port = port;
-                            println!("Using custom port: {}", port);
-                        }
-                        Err(_) => {
-                            eprintln!("Error: Invalid port number '{}'", args[i + 1]);
-                            std::process::exit(1);
-                        }
-                    }
+                    config.listen_port = args[i + 1].parse().unwrap_or_else(|_| {
+                        eprintln!("Error: Invalid port number '{}'", args[i + 1]);
+                        std::process::exit(1);
+                    });
                     i += 1;
                 } else {
                     eprintln!("Error: --port requires a value");
@@ -365,9 +328,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut cloud_node = CloudNode::new(config.clone());
 
-    println!("Starting cloud node...");
-    println!("This node provides authoritative time synchronization for the network");
-    println!("Listening on port: {}", config.listen_port);
+    println!("Starting cloud node on port {}", config.listen_port);
+    println!("Providing authoritative time synchronization");
 
     cloud_node.start().await
 }

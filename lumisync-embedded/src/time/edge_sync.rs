@@ -1,6 +1,6 @@
+use lumisync_api::message::*;
 use lumisync_api::time::{SyncConfig, SyncStatus, TimeProvider, TimeSyncService};
 use lumisync_api::uuid::{DeviceBasedUuidGenerator, UuidGenerator};
-use lumisync_api::{Message, MessageHeader, MessagePayload, NodeId, Priority, TimeSyncPayload};
 use time::OffsetDateTime;
 
 use crate::{Error, Result};
@@ -85,14 +85,14 @@ impl EdgeTimeSync {
     }
 
     /// Create cloud synchronization request
-    pub fn create_cloud_sync_request(&mut self) -> Result<lumisync_api::Message> {
+    pub fn create_cloud_sync_request(&mut self) -> Result<Message> {
         self.sync_service
             .create_sync_request(NodeId::Cloud)
             .map_err(|_| Error::InvalidCommand)
     }
 
     /// Handle cloud synchronization response
-    pub fn handle_cloud_sync_response(&mut self, response: &lumisync_api::Message) -> Result<()> {
+    pub fn handle_cloud_sync_response(&mut self, response: &Message) -> Result<()> {
         self.sync_service
             .handle_sync_response(response)
             .map_err(|_| Error::InvalidCommand)?;
@@ -103,7 +103,7 @@ impl EdgeTimeSync {
     }
 
     /// Create time broadcast to devices
-    pub fn create_time_broadcast(&self) -> Result<lumisync_api::Message> {
+    pub fn create_time_broadcast(&self) -> Result<Message> {
         let current_uptime = self.time_provider.monotonic_time_ms();
         let current_time = self
             .sync_service
@@ -129,10 +129,7 @@ impl EdgeTimeSync {
     }
 
     /// Handle device synchronization request
-    pub fn handle_device_sync_request(
-        &mut self,
-        request: &lumisync_api::Message,
-    ) -> Result<lumisync_api::Message> {
+    pub fn handle_device_sync_request(&mut self, request: &Message) -> Result<Message> {
         self.sync_service
             .handle_sync_request(request)
             .map_err(|_| Error::InvalidCommand)

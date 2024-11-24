@@ -15,7 +15,7 @@ utoipa = { workspace = true, features = ["macros", "time"], optional = true }
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 
 [features]
 default = ["std"]

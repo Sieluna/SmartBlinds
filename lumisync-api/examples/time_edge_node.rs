@@ -11,6 +11,7 @@ use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
+use tokio::signal;
 
 type DeviceConnections = Arc<Mutex<HashMap<String, Instant>>>;
 type SharedMetrics = Arc<Mutex<EdgeMetrics>>;
@@ -168,8 +169,23 @@ impl EdgeNode {
         self.start_cloud_connection_manager().await;
         self.start_metrics_task().await;
 
-        // Main event loop for cloud communication
-        self.run_cloud_communication().await
+        // Main event loop with graceful shutdown
+        loop {
+            tokio::select! {
+                _ = signal::ctrl_c() => {
+                    println!("Received shutdown signal, stopping edge node...");
+                    break;
+                }
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                    if !self.is_running.load(Ordering::SeqCst) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        self.shutdown().await;
+        Ok(())
     }
 
     /// Establish persistent connection to cloud
@@ -189,7 +205,7 @@ impl EdgeNode {
                 let mut cloud_transport = self.cloud_transport.lock().await;
                 *cloud_transport = Some(transport);
 
-                println!("Successfully connected to cloud server");
+                println!("Connected to cloud server");
                 Ok(())
             }
             Err(e) => {
@@ -204,41 +220,29 @@ impl EdgeNode {
         let cloud_transport = Arc::clone(&self.cloud_transport);
         let cloud_addr = self.config.cloud_server_addr.clone();
         let is_running = Arc::clone(&self.is_running);
-        let metrics = Arc::clone(&self.metrics);
 
         tokio::spawn(async move {
-            let mut reconnect_interval =
-                tokio::time::interval(tokio::time::Duration::from_secs(30));
+            let mut reconnect_interval = tokio::time::interval(Duration::from_secs(30));
 
             while is_running.load(Ordering::SeqCst) {
                 reconnect_interval.tick().await;
 
-                // Check if connection is still alive
                 let needs_reconnect = {
                     let transport_guard = cloud_transport.lock().await;
                     transport_guard.is_none()
                 };
 
                 if needs_reconnect {
-                    println!("Attempting to reconnect to cloud...");
+                    if let Ok(stream) = TcpStream::connect(&cloud_addr).await {
+                        let tcp_adapter = TcpAdapter::new(stream);
+                        let transport = AsyncMessageTransport::new(tcp_adapter)
+                            .with_default_protocol(Protocol::Postcard)
+                            .with_crc(true);
 
-                    match TcpStream::connect(&cloud_addr).await {
-                        Ok(stream) => {
-                            let tcp_adapter = TcpAdapter::new(stream);
-                            let transport = AsyncMessageTransport::new(tcp_adapter)
-                                .with_default_protocol(Protocol::Postcard)
-                                .with_crc(true);
+                        let mut cloud_transport_guard = cloud_transport.lock().await;
+                        *cloud_transport_guard = Some(transport);
 
-                            let mut cloud_transport_guard = cloud_transport.lock().await;
-                            *cloud_transport_guard = Some(transport);
-
-                            println!("Successfully reconnected to cloud");
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to reconnect to cloud: {}", e);
-                            let mut metrics = metrics.lock().await;
-                            metrics.cloud_sync_failures += 1;
-                        }
+                        println!("Reconnected to cloud");
                     }
                 }
             }
@@ -247,8 +251,7 @@ impl EdgeNode {
 
     /// Start device listener service
     async fn start_device_listener(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let listener =
-            TcpListener::bind(format!("0.0.0.0:{}", self.config.device_listen_port)).await?;
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", self.config.device_listen_port)).await?;
         let device_connections = Arc::clone(&self.device_connections);
         let metrics = Arc::clone(&self.metrics);
         let is_running = Arc::clone(&self.is_running);
@@ -258,27 +261,36 @@ impl EdgeNode {
             println!("Device listener started on port {}", listen_port);
 
             while is_running.load(Ordering::SeqCst) {
-                match listener.accept().await {
-                    Ok((stream, addr)) => {
-                        println!("Device connected from: {}", addr);
-                        let connections = Arc::clone(&device_connections);
-                        let metrics = Arc::clone(&metrics);
+                tokio::select! {
+                    result = listener.accept() => {
+                        match result {
+                            Ok((stream, addr)) => {
+                                println!("Device connected from: {}", addr);
+                                let connections = Arc::clone(&device_connections);
+                                let metrics = Arc::clone(&metrics);
+                                let is_running = Arc::clone(&is_running);
 
-                        tokio::spawn(async move {
-                            if let Err(e) = Self::handle_device_connection(
-                                stream,
-                                addr.to_string(),
-                                connections,
-                                metrics,
-                            )
-                            .await
-                            {
-                                eprintln!("Error handling device connection from {}: {}", addr, e);
+                                tokio::spawn(async move {
+                                    if let Err(e) = Self::handle_device_connection(
+                                        stream,
+                                        addr.to_string(),
+                                        connections,
+                                        metrics,
+                                        is_running,
+                                    )
+                                    .await
+                                    {
+                                        eprintln!("Device connection error: {}", e);
+                                    }
+                                });
                             }
-                        });
+                            Err(e) => eprintln!("Failed to accept device connection: {}", e),
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("Failed to accept device connection: {}", e);
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                        if !is_running.load(Ordering::SeqCst) {
+                            break;
+                        }
                     }
                 }
             }
@@ -293,70 +305,60 @@ impl EdgeNode {
         addr: String,
         device_connections: DeviceConnections,
         metrics: SharedMetrics,
+        is_running: RunningFlag,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let tcp_adapter = TcpAdapter::new(stream);
         let mut transport = AsyncMessageTransport::new(tcp_adapter)
             .with_default_protocol(Protocol::Postcard)
             .with_crc(true);
 
-        // Register device connection
         {
             let mut connections = device_connections.lock().await;
             connections.insert(addr.clone(), Instant::now());
         }
 
-        loop {
-            match transport.receive_message::<Message>().await {
-                Ok((message, _protocol, _stream_id)) => {
-                    println!(
-                        "Received message from device {}: {:?}",
-                        addr, message.header.source
-                    );
+        while is_running.load(Ordering::SeqCst) {
+            tokio::select! {
+                result = transport.receive_message::<Message>() => {
+                    match result {
+                        Ok((message, _protocol, _stream_id)) => {
+                            {
+                                let mut connections = device_connections.lock().await;
+                                connections.insert(addr.clone(), Instant::now());
+                            }
 
-                    // Update device last activity time
-                    {
-                        let mut connections = device_connections.lock().await;
-                        connections.insert(addr.clone(), Instant::now());
-                    }
+                            if let Some(response) = Self::process_device_message(&message).await {
+                                if transport
+                                    .send_message(&response, Some(Protocol::Postcard), None)
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
 
-                    // Process device message
-                    if let Some(response) = Self::process_device_message(&message).await {
-                        if let Err(e) = transport
-                            .send_message(&response, Some(Protocol::Postcard), None)
-                            .await
-                        {
-                            eprintln!("Failed to send response to device: {}", e);
-                            break;
+                                {
+                                    let mut metrics = metrics.lock().await;
+                                    metrics.device_messages_sent += 1;
+                                }
+                            }
+
+                            {
+                                let mut metrics = metrics.lock().await;
+                                metrics.device_messages_received += 1;
+                            }
                         }
-                        println!("Sent response to device {}", addr);
-
-                        // Update metrics
-                        {
-                            let mut metrics = metrics.lock().await;
-                            metrics.device_messages_sent += 1;
-                        }
-                    }
-
-                    // Update metrics
-                    {
-                        let mut metrics = metrics.lock().await;
-                        metrics.device_messages_received += 1;
+                        Err(_) => break,
                     }
                 }
-                Err(e) => {
-                    eprintln!("Failed to receive message from device {}: {}", addr, e);
-                    break;
-                }
+                _ = tokio::time::sleep(Duration::from_secs(30)) => continue,
             }
         }
 
-        // Cleanup device connection
         {
             let mut connections = device_connections.lock().await;
             connections.remove(&addr);
         }
 
-        println!("Device disconnected: {}", addr);
         Ok(())
     }
 
@@ -525,29 +527,6 @@ impl EdgeNode {
                 );
             }
         });
-    }
-
-    /// Main event loop for cloud communication
-    async fn run_cloud_communication(
-        &mut self,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        while self.is_running.load(Ordering::SeqCst) {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-
-            // Optionally handle incoming messages from cloud here
-            // For now, just maintain the event loop
-        }
-        Ok(())
-    }
-
-    /// Get current metrics
-    pub async fn get_metrics(&self) -> EdgeMetrics {
-        self.metrics.lock().await.clone()
-    }
-
-    /// Get sync status
-    pub fn get_sync_status(&self) -> SyncStatus {
-        self.time_service.get_sync_status()
     }
 
     /// Graceful shutdown

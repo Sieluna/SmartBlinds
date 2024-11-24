@@ -10,6 +10,7 @@ use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc};
+use tokio::signal;
 
 type SharedTimeSync = Arc<Mutex<DeviceTimeSync>>;
 type SharedMetrics = Arc<Mutex<DeviceMetrics>>;
@@ -233,22 +234,21 @@ impl SimpleDevice {
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.is_running.store(true, Ordering::SeqCst);
 
-        println!("Starting Simple Device {:?}", self.config.device_mac);
+        println!("Starting device {:?}", self.config.device_mac);
 
-        // Create message channel for internal communication
         let (message_tx, message_rx) = mpsc::unbounded_channel();
         self.message_sender = Some(message_tx);
 
-        // Connect to edge node
         self.connect_to_edge().await?;
-
-        // Start background tasks
         self.start_sync_request_task().await;
         self.start_status_report_task().await;
         self.start_metrics_collection_task().await;
 
-        // Main event loop
-        self.run_main_loop(message_rx).await
+        // Run main loop with integrated shutdown handling
+        self.run_main_loop(message_rx).await?;
+        
+        self.shutdown().await;
+        Ok(())
     }
 
     /// Connect to edge node
@@ -272,7 +272,7 @@ impl SimpleDevice {
             metrics.last_edge_contact = Some(Instant::now());
         }
 
-        println!("Connected to edge server successfully");
+        println!("Connected to edge server");
         Ok(())
     }
 
@@ -322,12 +322,10 @@ impl SimpleDevice {
                 println!("Sending time sync request (sequence: {})", sequence);
 
                 // Send message through channel to main loop
-                if let Err(_) = message_sender.send(message) {
-                    eprintln!("Failed to send message to main loop - channel closed");
+                if message_sender.send(message).is_err() {
                     break;
                 }
 
-                // Update metrics
                 {
                     let mut metrics = metrics.lock().await;
                     metrics.messages_sent += 1;
@@ -340,20 +338,17 @@ impl SimpleDevice {
     async fn start_status_report_task(&self) {
         let report_interval = self.config.status_report_interval_ms;
         let time_sync = Arc::clone(&self.time_sync);
-        let metrics = Arc::clone(&self.metrics);
         let is_running = Arc::clone(&self.is_running);
         let device_mac = self.config.device_mac;
         let uuid_generator = self.uuid_generator.clone();
         let message_sender = self.message_sender.clone().unwrap();
 
         tokio::spawn(async move {
-            let mut interval =
-                tokio::time::interval(tokio::time::Duration::from_millis(report_interval));
+            let mut interval = tokio::time::interval(Duration::from_millis(report_interval));
 
             while is_running.load(Ordering::SeqCst) {
                 interval.tick().await;
 
-                // Create simple status message
                 let message = {
                     let time_sync = time_sync.lock().await;
 
@@ -381,16 +376,8 @@ impl SimpleDevice {
                     }
                 );
 
-                // Send status query through channel
-                if let Err(_) = message_sender.send(message) {
-                    eprintln!("Failed to send status query to main loop - channel closed");
+                if message_sender.send(message).is_err() {
                     break;
-                }
-
-                // Update metrics
-                {
-                    let mut metrics = metrics.lock().await;
-                    metrics.messages_sent += 1;
                 }
             }
         });
@@ -438,17 +425,22 @@ impl SimpleDevice {
     ) -> Result<(), Box<dyn std::error::Error>> {
         while self.is_running.load(Ordering::SeqCst) {
             tokio::select! {
+                // Handle shutdown signals
+                _ = signal::ctrl_c() => {
+                    println!("Received shutdown signal, stopping device...");
+                    self.is_running.store(false, Ordering::SeqCst);
+                    break;
+                }
                 // Handle outgoing messages from background tasks
                 Some(message) = message_rx.recv() => {
                     if let Some(ref mut transport) = self.edge_transport {
                         match transport.send_message(&message, Some(Protocol::Postcard), None).await {
                             Ok(_) => {
-                                println!("Successfully sent message to edge: {:?}", message.payload);
+                                // Message sent successfully
                             }
                             Err(e) => {
                                 eprintln!("Failed to send message to edge: {}", e);
 
-                                // Try to reconnect on send failure
                                 if let Err(e) = self.connect_to_edge().await {
                                     eprintln!("Failed to reconnect to edge: {}", e);
                                     let mut metrics = self.metrics.lock().await;
@@ -459,15 +451,12 @@ impl SimpleDevice {
                         }
                     }
                 }
-
                 // Handle incoming messages from edge node
                 _ = self.handle_incoming_messages() => {
                     // Handle incoming messages result if needed
                 }
-
                 // Periodic maintenance
                 _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                    // Update time sync state
                     let mut time_sync = self.time_sync.lock().await;
                     time_sync.update_sync_state();
                 }
@@ -558,14 +547,13 @@ impl SimpleDevice {
 
     /// Graceful shutdown
     pub async fn shutdown(&mut self) {
-        println!("Shutting down simple device...");
+        println!("Shutting down device...");
         self.is_running.store(false, Ordering::SeqCst);
 
-        println!("Simple device shutdown completed");
+        println!("Device shutdown completed");
     }
 }
 
-/// Device node startup example
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = DeviceConfig::default();
@@ -669,7 +657,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut simple_device = SimpleDevice::new(config.clone());
 
-    println!("Starting simple device...");
+    println!("Starting device...");
     println!(
         "This device synchronizes time with edge node and demonstrates transport functionality"
     );

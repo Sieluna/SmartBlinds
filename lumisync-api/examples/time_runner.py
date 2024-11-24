@@ -11,9 +11,9 @@ Default configuration:
 - 4 Device nodes (2 per edge)
 
 Example usage:
-    python test_lumisync.py                                   # Default setup
-    python test_lumisync.py --edges 3 --devices-per-edge 3    # Custom setup
-    python test_lumisync.py --cloud-port 8081 --verbose       # Custom cloud port with verbose logging
+    python time_runner.py                                   # Default setup
+    python time_runner.py --edges 3 --devices-per-edge 3    # Custom setup
+    python time_runner.py --cloud-port 8081 --verbose       # Custom cloud port with verbose logging
 """
 
 import argparse
@@ -73,8 +73,8 @@ class NodeProcess:
         self.last_activity = self.start_time
 
 
-class LumiSyncTestRunner:
-    """Main test runner class"""
+class TimeRunner:
+    """Time synchronization system test runner"""
     
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -95,7 +95,7 @@ class LumiSyncTestRunner:
             raise RuntimeError(f"Cargo.toml not found in {self.cargo_cwd}")
 
     def _signal_handler(self, signum, frame):
-        """Handle shutdown signals"""
+        """Handle shutdown signals gracefully"""
         print(f"\nReceived signal {signum}, initiating graceful shutdown...")
         self.shutdown_event.set()
         self.is_running.clear()
@@ -188,16 +188,18 @@ class LumiSyncTestRunner:
                 cmd.append("--")
                 cmd.extend(config.args)
             
-            print(f"Starting {node_name}: {' '.join(cmd)}")
+            if self.args.verbose:
+                print(f"Starting {node_name}: {' '.join(cmd)}")
             
-            # Start process
+            # Start process with proper signal handling
             process = subprocess.Popen(
                 cmd,
                 cwd=self.cargo_cwd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
-                bufsize=1  # Line buffered
+                bufsize=1,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
             )
             
             node_process = NodeProcess(
@@ -238,9 +240,9 @@ class LumiSyncTestRunner:
                     node_process.log_lines.append(formatted_line)
                     node_process.last_activity = datetime.now()
                     
-                    # Keep only last 100 lines per node
-                    if len(node_process.log_lines) > 100:
-                        node_process.log_lines = node_process.log_lines[-100:]
+                    # Keep only last 50 lines per node
+                    if len(node_process.log_lines) > 50:
+                        node_process.log_lines = node_process.log_lines[-50:]
                     
                     # Queue for main log display
                     self.log_queue.put(formatted_line)
@@ -248,7 +250,7 @@ class LumiSyncTestRunner:
                     # Update status based on log content
                     if node_process.status == NodeStatus.STARTING:
                         if any(keyword in line.lower() for keyword in 
-                               ["listening", "connected", "started", "starting"]):
+                               ["listening", "connected", "started"]):
                             node_process.status = NodeStatus.RUNNING
                             
         except Exception as e:
@@ -277,15 +279,15 @@ class LumiSyncTestRunner:
         """Determine if log line should be displayed in non-verbose mode"""
         important_keywords = [
             "error", "failed", "success", "connected", "disconnected",
-            "metrics", "sync", "started", "listening", "shutdown"
+            "sync", "started", "listening", "shutdown", "shutting"
         ]
         return any(keyword in log_line.lower() for keyword in important_keywords)
 
     def _print_status_summary(self):
         """Print current status of all nodes"""
-        print("\n" + "="*80)
-        print(f"LUMISYNC TEST STATUS - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("="*80)
+        print("\n" + "="*70)
+        print(f"TIME SYNC STATUS - {datetime.now().strftime('%H:%M:%S')}")
+        print("="*70)
         
         # Group nodes by type
         cloud_nodes = []
@@ -306,7 +308,7 @@ class LumiSyncTestRunner:
             uptime = datetime.now() - node.start_time
             print(f"   {name}: {node.status.value.upper()} (uptime: {uptime})")
             if node.config.port:
-                print(f"      Listening on port: {node.config.port}")
+                print(f"      Port: {node.config.port}")
         
         # Display edge nodes  
         print(f"\n🌐 EDGE NODES ({len(edge_nodes)}):")
@@ -315,18 +317,12 @@ class LumiSyncTestRunner:
             print(f"   {name}: {node.status.value.upper()} (uptime: {uptime})")
             if node.config.port:
                 print(f"      Device port: {node.config.port}")
-            if node.config.target_addr:
-                print(f"      Cloud address: {node.config.target_addr}")
         
         # Display device nodes
         print(f"\n📱 DEVICE NODES ({len(device_nodes)}):")
         for name, node in sorted(device_nodes):
             uptime = datetime.now() - node.start_time
             print(f"   {name}: {node.status.value.upper()} (uptime: {uptime})")
-            if node.config.device_mac:
-                print(f"      MAC: {node.config.device_mac}")
-            if node.config.target_addr:
-                print(f"      Edge address: {node.config.target_addr}")
         
         # Overall health
         total_nodes = len(self.nodes)
@@ -334,18 +330,16 @@ class LumiSyncTestRunner:
         failed_nodes = sum(1 for node in self.nodes.values() if node.status == NodeStatus.FAILED)
         
         print(f"\n📊 SYSTEM HEALTH:")
-        print(f"   Total nodes: {total_nodes}")
-        print(f"   Running: {running_nodes}")
-        print(f"   Failed: {failed_nodes}")
-        print(f"   Health: {'🟢 GOOD' if failed_nodes == 0 else '🟡 DEGRADED' if failed_nodes < total_nodes//2 else '🔴 CRITICAL'}")
-        
-        print("="*80)
+        print(f"   Total: {total_nodes} | Running: {running_nodes} | Failed: {failed_nodes}")
+        health_status = "🟢 GOOD" if failed_nodes == 0 else "🟡 DEGRADED" if failed_nodes < total_nodes//2 else "🔴 CRITICAL"
+        print(f"   Status: {health_status}")
+        print("="*70)
 
     def start_all_nodes(self):
         """Start all nodes in the correct order"""
         configs = self._create_node_configs()
         
-        print(f"Starting LumiSync test environment...")
+        print(f"Starting time synchronization system...")
         print(f"Configuration: {self.args.edges} edges, {self.args.devices_per_edge} devices per edge")
         print(f"Total nodes: {len(configs)}")
         
@@ -357,8 +351,7 @@ class LumiSyncTestRunner:
             if node_process:
                 self.nodes[node_name] = node_process
         
-        # Wait a bit for cloud to start
-        time.sleep(2)
+        time.sleep(2)  # Wait for cloud to start
         
         # Start edge nodes
         edge_configs = [c for c in configs if c.node_type == NodeType.EDGE]
@@ -368,8 +361,7 @@ class LumiSyncTestRunner:
             if node_process:
                 self.nodes[node_name] = node_process
         
-        # Wait for edges to connect to cloud
-        time.sleep(3)
+        time.sleep(3)  # Wait for edges to connect to cloud
         
         # Start device nodes
         device_configs = [c for c in configs if c.node_type == NodeType.DEVICE]
@@ -394,7 +386,7 @@ class LumiSyncTestRunner:
         
         try:
             while self.is_running.is_set() and not self.shutdown_event.is_set():
-                # Check if any process has died
+                # Check for dead processes
                 for name, node in self.nodes.items():
                     if node.process.poll() is not None and node.status == NodeStatus.RUNNING:
                         node.status = NodeStatus.FAILED
@@ -414,7 +406,7 @@ class LumiSyncTestRunner:
 
     def shutdown_all_nodes(self):
         """Gracefully shutdown all nodes"""
-        print("\nShutting down all nodes...")
+        print("\nInitiating graceful shutdown...")
         
         # Shutdown in reverse order: devices, edges, cloud
         device_nodes = [(name, node) for name, node in self.nodes.items() 
@@ -430,14 +422,28 @@ class LumiSyncTestRunner:
             if node.process.poll() is None:  # Still running
                 print(f"Stopping {name}...")
                 try:
-                    node.process.terminate()
-                    node.process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    print(f"Force killing {name}...")
-                    node.process.kill()
-                    node.process.wait()
+                    # Send SIGTERM for graceful shutdown
+                    if os.name == 'nt':  # Windows
+                        node.process.send_signal(signal.CTRL_BREAK_EVENT)
+                    else:  # Unix-like
+                        node.process.terminate()
+                    
+                    # Wait for graceful shutdown
+                    try:
+                        node.process.wait(timeout=10)
+                        print(f"  {name} stopped gracefully")
+                    except subprocess.TimeoutExpired:
+                        print(f"  {name} didn't respond, force killing...")
+                        node.process.kill()
+                        node.process.wait()
+                        
                 except Exception as e:
-                    print(f"Error stopping {name}: {e}")
+                    print(f"  Error stopping {name}: {e}")
+                    try:
+                        node.process.kill()
+                        node.process.wait()
+                    except:
+                        pass
                 
                 node.status = NodeStatus.STOPPED
         
@@ -452,7 +458,7 @@ class LumiSyncTestRunner:
             time.sleep(5)
             self._print_status_summary()
             
-            print(f"\n🚀 LumiSync test environment is running!")
+            print(f"\n🚀 Time synchronization system is running!")
             print("Press Ctrl+C to stop all nodes and exit.")
             print("Status updates will be shown every 30 seconds.\n")
             
@@ -470,7 +476,7 @@ class LumiSyncTestRunner:
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description="LumiSync Time Synchronization System Test Runner",
+        description="Time Synchronization System Test Runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -522,7 +528,7 @@ Examples:
         parser.error(f"Cloud port {args.cloud_port} conflicts with edge port range {args.edge_base_port}-{max_edge_port}")
     
     try:
-        runner = LumiSyncTestRunner(args)
+        runner = TimeRunner(args)
         runner.run()
     except KeyboardInterrupt:
         print("\nInterrupted by user")

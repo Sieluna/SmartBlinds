@@ -6,11 +6,10 @@ pub use device_sync::DeviceTimeSync;
 pub use edge_sync::EdgeTimeSync;
 pub use provider::EmbeddedTimeProvider;
 
-pub use lumisync_api::{SyncConfig, SyncStatus, TimeProvider};
-
 #[cfg(test)]
 mod tests {
-    use lumisync_api::{Message, MessageHeader, MessagePayload, NodeId, Priority, TimeSyncPayload};
+    use lumisync_api::message::*;
+    use lumisync_api::time::*;
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -308,7 +307,7 @@ mod tests {
                 source: NodeId::Edge(1),
                 target: NodeId::Device(device_mac),
             },
-            payload: MessagePayload::Acknowledge(lumisync_api::AckPayload {
+            payload: MessagePayload::Acknowledge(AckPayload {
                 original_msg_id: Uuid::new_v4(),
                 status: "OK".into(),
                 details: None,

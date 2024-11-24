@@ -1,4 +1,5 @@
-use lumisync_api::{Message, MessagePayload, TimeProvider, TimeSyncPayload};
+use lumisync_api::message::{Message, MessagePayload, NodeId, TimeSyncPayload};
+use lumisync_api::time::TimeProvider;
 use time::OffsetDateTime;
 
 use crate::{Error, Result};
@@ -57,15 +58,15 @@ impl DeviceTimeSync {
     /// Handle time broadcast message
     pub fn handle_time_broadcast(&mut self, message: &Message) -> Result<()> {
         // Verify message source is from Edge node for security
-        if !matches!(message.header.source, lumisync_api::NodeId::Edge(_)) {
+        if !matches!(message.header.source, NodeId::Edge(_)) {
             return Err(Error::InvalidCommand);
         }
 
         // Verify target is broadcast or this specific device
         match message.header.target {
-            lumisync_api::NodeId::Any => {} // Broadcast is OK
-            lumisync_api::NodeId::Device(mac) if mac == self.device_mac => {} // Direct message is OK
-            _ => return Err(Error::InvalidCommand),                           // Wrong target
+            NodeId::Any => {}                                   // Broadcast is OK
+            NodeId::Device(mac) if mac == self.device_mac => {} // Direct message is OK
+            _ => return Err(Error::InvalidCommand),             // Wrong target
         }
 
         if let MessagePayload::TimeSync(TimeSyncPayload::Broadcast { timestamp, .. }) =

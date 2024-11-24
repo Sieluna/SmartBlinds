@@ -1,5 +1,5 @@
 use embassy_time::Instant;
-use lumisync_api::TimeProvider;
+use lumisync_api::time::TimeProvider;
 
 #[derive(Debug, Clone)]
 pub struct EmbeddedTimeProvider {
