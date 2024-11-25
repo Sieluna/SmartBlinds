@@ -103,10 +103,12 @@ impl TimeSynchronizer {
 
         // Check for excessive drift - but skip for first sync
         let is_first_sync = self.offset_history.is_empty();
-
-        if !is_first_sync && new_offset.abs() > self.config.max_drift_ms as i64 * 2 {
-            self.handle_sync_failure(receive_uptime);
-            return Err(SyncError::ExcessiveDrift);
+        if !is_first_sync {
+            let offset_change = (new_offset - self.current_offset_ms).abs();
+            if offset_change > self.config.max_drift_ms as i64 * 2 {
+                self.handle_sync_failure(receive_uptime);
+                return Err(SyncError::ExcessiveDrift);
+            }
         }
 
         // Record the offset

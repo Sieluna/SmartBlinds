@@ -51,6 +51,7 @@ class NodeConfig:
     port: Optional[int] = None
     target_addr: Optional[str] = None
     device_mac: Optional[str] = None
+    target_edge_id: Optional[int] = None
     args: List[str] = None
 
     def __post_init__(self):
@@ -96,7 +97,7 @@ class TimeRunner:
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""
-        print(f"\nReceived signal {signum}, initiating graceful shutdown...")
+        print(f"\n[SHUTDOWN] Signal received")
         self.shutdown_event.set()
         self.is_running.clear()
 
@@ -129,8 +130,7 @@ class TimeRunner:
                 args=[
                     "--edge-id", str(edge_id),
                     "--cloud-addr", cloud_addr,
-                    "--device-port", str(edge_port),
-                    "--sync-interval", str(self.args.sync_interval)
+                    "--device-port", str(edge_port)
                 ]
             ))
         
@@ -148,9 +148,11 @@ class TimeRunner:
                     node_id=device_id,
                     target_addr=edge_addr,
                     device_mac=mac_addr,
+                    target_edge_id=edge_id,
                     args=[
                         "--edge-addr", edge_addr,
                         "--device-mac", mac_addr,
+                        "--target-edge", str(edge_id),
                         "--sync-interval", str(self.args.device_sync_interval),
                         "--status-interval", str(self.args.device_status_interval)
                     ]
@@ -191,13 +193,15 @@ class TimeRunner:
             if self.args.verbose:
                 print(f"Starting {node_name}: {' '.join(cmd)}")
             
-            # Start process with proper signal handling
+            # Start process with proper signal handling and UTF-8 encoding
             process = subprocess.Popen(
                 cmd,
                 cwd=self.cargo_cwd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
+                encoding='utf-8',
+                errors='replace',
                 bufsize=1,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
             )
@@ -222,7 +226,7 @@ class TimeRunner:
             return node_process
             
         except Exception as e:
-            print(f"Failed to start {node_name}: {e}")
+            print(f"[ERROR] Failed to start {node_name}: {e}")
             return None
 
     def _monitor_node_logs(self, node_name: str, node_process: NodeProcess):
@@ -240,22 +244,27 @@ class TimeRunner:
                     node_process.log_lines.append(formatted_line)
                     node_process.last_activity = datetime.now()
                     
-                    # Keep only last 50 lines per node
-                    if len(node_process.log_lines) > 50:
-                        node_process.log_lines = node_process.log_lines[-50:]
+                    # Keep only last 20 lines per node
+                    if len(node_process.log_lines) > 20:
+                        node_process.log_lines = node_process.log_lines[-20:]
                     
                     # Queue for main log display
                     self.log_queue.put(formatted_line)
                     
                     # Update status based on log content
                     if node_process.status == NodeStatus.STARTING:
-                        if any(keyword in line.lower() for keyword in 
-                               ["listening", "connected", "started"]):
+                        # Check for running status keywords
+                        running_keywords = [
+                            "ready", "starting", "connected", "listening", 
+                            "node ready", "device connections", "[cloud]", "[edge", "[device"
+                        ]
+                        if any(keyword in line.lower() for keyword in running_keywords):
                             node_process.status = NodeStatus.RUNNING
+                            print(f"[SUCCESS] {node_name} is now running")
                             
         except Exception as e:
             if self.args.verbose:
-                print(f"Log monitoring error for {node_name}: {e}")
+                print(f"[ERROR] Log monitoring error for {node_name}: {e}")
         finally:
             # Check if process ended unexpectedly
             if node_process.process.poll() is not None and node_process.status == NodeStatus.RUNNING:
@@ -273,21 +282,23 @@ class TimeRunner:
                     continue
         except Exception as e:
             if self.args.verbose:
-                print(f"Log display error: {e}")
+                print(f"[ERROR] Log display error: {e}")
 
     def _should_display_log(self, log_line: str) -> bool:
         """Determine if log line should be displayed in non-verbose mode"""
+        # Show important events and errors
         important_keywords = [
-            "error", "failed", "success", "connected", "disconnected",
-            "sync", "started", "listening", "shutdown", "shutting"
+            "[error]", "[success]", "[warn]", "[cloud]", "[edge", "[device", "[shutdown]",
+            "error", "failed", "ready", "starting", "shutdown", 
+            "synchronized", "disconnected"
         ]
         return any(keyword in log_line.lower() for keyword in important_keywords)
 
     def _print_status_summary(self):
         """Print current status of all nodes"""
-        print("\n" + "="*70)
-        print(f"TIME SYNC STATUS - {datetime.now().strftime('%H:%M:%S')}")
-        print("="*70)
+        print("\n" + "="*60)
+        print(f"[STATUS] TIME SYNC STATUS - {datetime.now().strftime('%H:%M:%S')}")
+        print("="*60)
         
         # Group nodes by type
         cloud_nodes = []
@@ -303,45 +314,68 @@ class TimeRunner:
                 device_nodes.append((name, node))
         
         # Display cloud nodes
-        print(f"\n🌥️  CLOUD NODES ({len(cloud_nodes)}):")
-        for name, node in cloud_nodes:
-            uptime = datetime.now() - node.start_time
-            print(f"   {name}: {node.status.value.upper()} (uptime: {uptime})")
-            if node.config.port:
-                print(f"      Port: {node.config.port}")
+        if cloud_nodes:
+            print(f"\n[CLOUD] ({len(cloud_nodes)}):")
+            for name, node in cloud_nodes:
+                uptime = datetime.now() - node.start_time
+                status_icon = "[OK]" if node.status == NodeStatus.RUNNING else "[FAIL]"
+                print(f"   {status_icon} {name}: {node.status.value} ({self._format_uptime(uptime)})")
         
         # Display edge nodes  
-        print(f"\n🌐 EDGE NODES ({len(edge_nodes)}):")
-        for name, node in sorted(edge_nodes):
-            uptime = datetime.now() - node.start_time
-            print(f"   {name}: {node.status.value.upper()} (uptime: {uptime})")
-            if node.config.port:
-                print(f"      Device port: {node.config.port}")
+        if edge_nodes:
+            print(f"\n[EDGES] ({len(edge_nodes)}):")
+            for name, node in sorted(edge_nodes):
+                uptime = datetime.now() - node.start_time
+                status_icon = "[OK]" if node.status == NodeStatus.RUNNING else "[FAIL]"
+                print(f"   {status_icon} {name}: {node.status.value} ({self._format_uptime(uptime)})")
         
         # Display device nodes
-        print(f"\n📱 DEVICE NODES ({len(device_nodes)}):")
-        for name, node in sorted(device_nodes):
-            uptime = datetime.now() - node.start_time
-            print(f"   {name}: {node.status.value.upper()} (uptime: {uptime})")
+        if device_nodes:
+            print(f"\n[DEVICES] ({len(device_nodes)}):")
+            for name, node in sorted(device_nodes):
+                uptime = datetime.now() - node.start_time
+                status_icon = "[OK]" if node.status == NodeStatus.RUNNING else "[FAIL]"
+                target_info = f" -> Edge({node.config.target_edge_id})" if node.config.target_edge_id else ""
+                print(f"   {status_icon} {name}: {node.status.value} ({self._format_uptime(uptime)}){target_info}")
         
         # Overall health
         total_nodes = len(self.nodes)
         running_nodes = sum(1 for node in self.nodes.values() if node.status == NodeStatus.RUNNING)
         failed_nodes = sum(1 for node in self.nodes.values() if node.status == NodeStatus.FAILED)
         
-        print(f"\n📊 SYSTEM HEALTH:")
+        print(f"\n[HEALTH]:")
         print(f"   Total: {total_nodes} | Running: {running_nodes} | Failed: {failed_nodes}")
-        health_status = "🟢 GOOD" if failed_nodes == 0 else "🟡 DEGRADED" if failed_nodes < total_nodes//2 else "🔴 CRITICAL"
+        health_status = "[GOOD]" if failed_nodes == 0 else "[DEGRADED]" if failed_nodes < total_nodes//2 else "[CRITICAL]"
         print(f"   Status: {health_status}")
-        print("="*70)
+        print("="*60)
+
+    def _format_uptime(self, uptime):
+        """Format uptime duration"""
+        total_seconds = int(uptime.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours > 0:
+            return f"{hours}h{minutes}m"
+        elif minutes > 0:
+            return f"{minutes}m{seconds}s"
+        else:
+            return f"{seconds}s"
 
     def start_all_nodes(self):
         """Start all nodes in the correct order"""
         configs = self._create_node_configs()
         
-        print(f"Starting time synchronization system...")
-        print(f"Configuration: {self.args.edges} edges, {self.args.devices_per_edge} devices per edge")
-        print(f"Total nodes: {len(configs)}")
+        print(f"[STARTUP] Starting time synchronization system")
+        print(f"   Configuration: {self.args.edges} edges, {self.args.devices_per_edge} devices per edge")
+        print(f"   Total nodes: {len(configs)}")
+        
+        device_configs = [c for c in configs if c.node_type == NodeType.DEVICE]
+        if device_configs:
+            print(f"\n[TARGETING] Device targeting:")
+            for config in device_configs:
+                device_name = self._get_node_name(config)
+                print(f"   {device_name} -> Edge({config.target_edge_id})")
+        print()
         
         # Start cloud first
         cloud_configs = [c for c in configs if c.node_type == NodeType.CLOUD]
@@ -364,14 +398,13 @@ class TimeRunner:
         time.sleep(3)  # Wait for edges to connect to cloud
         
         # Start device nodes
-        device_configs = [c for c in configs if c.node_type == NodeType.DEVICE]
         for config in device_configs:
             node_name = self._get_node_name(config)
             node_process = self._start_node(config)
             if node_process:
                 self.nodes[node_name] = node_process
         
-        print(f"All nodes started. Total: {len(self.nodes)}")
+        print(f"[SUCCESS] All nodes started. Total: {len(self.nodes)}")
 
     def monitor_system(self):
         """Monitor the running system"""
@@ -390,23 +423,23 @@ class TimeRunner:
                 for name, node in self.nodes.items():
                     if node.process.poll() is not None and node.status == NodeStatus.RUNNING:
                         node.status = NodeStatus.FAILED
-                        print(f"\n⚠️  Node {name} has stopped unexpectedly!")
+                        print(f"\n[WARN] Node {name} stopped unexpectedly!")
                 
-                # Print status summary every 30 seconds
-                if time.time() - last_status_time > 30:
+                # Print status summary every 60 seconds
+                if time.time() - last_status_time > 60:
                     self._print_status_summary()
                     last_status_time = time.time()
                 
                 time.sleep(1)
                 
         except KeyboardInterrupt:
-            print("\nKeyboard interrupt received")
+            print("\n[SHUTDOWN] Keyboard interrupt received")
         finally:
             self.is_running.clear()
 
     def shutdown_all_nodes(self):
         """Gracefully shutdown all nodes"""
-        print("\nInitiating graceful shutdown...")
+        print("\n[SHUTDOWN] Initiating graceful shutdown...")
         
         # Shutdown in reverse order: devices, edges, cloud
         device_nodes = [(name, node) for name, node in self.nodes.items() 
@@ -420,7 +453,6 @@ class TimeRunner:
         
         for name, node in all_shutdown_order:
             if node.process.poll() is None:  # Still running
-                print(f"Stopping {name}...")
                 try:
                     # Send SIGTERM for graceful shutdown
                     if os.name == 'nt':  # Windows
@@ -430,15 +462,12 @@ class TimeRunner:
                     
                     # Wait for graceful shutdown
                     try:
-                        node.process.wait(timeout=10)
-                        print(f"  {name} stopped gracefully")
+                        node.process.wait(timeout=5)
                     except subprocess.TimeoutExpired:
-                        print(f"  {name} didn't respond, force killing...")
                         node.process.kill()
                         node.process.wait()
                         
                 except Exception as e:
-                    print(f"  Error stopping {name}: {e}")
                     try:
                         node.process.kill()
                         node.process.wait()
@@ -447,7 +476,7 @@ class TimeRunner:
                 
                 node.status = NodeStatus.STOPPED
         
-        print("All nodes stopped.")
+        print("[SUCCESS] All nodes stopped")
 
     def run(self):
         """Main run method"""
@@ -455,17 +484,17 @@ class TimeRunner:
             self.start_all_nodes()
             
             # Initial status
-            time.sleep(5)
+            time.sleep(3)
             self._print_status_summary()
             
-            print(f"\n🚀 Time synchronization system is running!")
-            print("Press Ctrl+C to stop all nodes and exit.")
-            print("Status updates will be shown every 30 seconds.\n")
+            print(f"\n[SYSTEM] Time synchronization system is running!")
+            print("   Press Ctrl+C to stop all nodes and exit")
+            print("   Status updates every 60 seconds\n")
             
             self.monitor_system()
             
         except Exception as e:
-            print(f"Error during execution: {e}")
+            print(f"[ERROR] Error during execution: {e}")
             if self.args.verbose:
                 import traceback
                 traceback.print_exc()
@@ -481,34 +510,32 @@ def main():
         epilog="""
 Examples:
   %(prog)s                                    # Default: 2 edges, 2 devices each
-  %(prog)s --edges 3 --devices-per-edge 3    # 3 edges, 3 devices each  
-  %(prog)s --cloud-port 8081 --verbose       # Custom cloud port with verbose logging
+  %(prog)s --edges 3 --devices-per-edge 3    # 3 edges, 3 devices each
+  %(prog)s --verbose                          # Verbose logging
         """
     )
     
     # System configuration
     parser.add_argument("--edges", type=int, default=2,
-                       help="Number of edge nodes to start (default: 2)")
+                       help="Number of edge nodes (default: 2)")
     parser.add_argument("--devices-per-edge", type=int, default=2,
-                       help="Number of device nodes per edge (default: 2)")
+                       help="Number of devices per edge (default: 2)")
     
     # Network configuration  
     parser.add_argument("--cloud-port", type=int, default=8080,
-                       help="Cloud node listen port (default: 8080)")
+                       help="Cloud port (default: 8080)")
     parser.add_argument("--edge-base-port", type=int, default=9090,
-                       help="Base port for edge nodes, incremented for each edge (default: 9090)")
+                       help="Base port for edges (default: 9090)")
     
     # Timing configuration
-    parser.add_argument("--sync-interval", type=int, default=30,
-                       help="Edge-to-cloud sync interval in seconds (default: 30)")
-    parser.add_argument("--device-sync-interval", type=int, default=60,
-                       help="Device sync request interval in seconds (default: 60)")
-    parser.add_argument("--device-status-interval", type=int, default=30,
-                       help="Device status report interval in seconds (default: 30)")
+    parser.add_argument("--device-sync-interval", type=int, default=90,
+                       help="Device sync interval in seconds (default: 90)")
+    parser.add_argument("--device-status-interval", type=int, default=60,
+                       help="Device status interval in seconds (default: 60)")
     
     # Logging configuration
     parser.add_argument("--verbose", "-v", action="store_true",
-                       help="Enable verbose logging (show all log messages)")
+                       help="Enable verbose logging")
     
     args = parser.parse_args()
     
@@ -517,24 +544,15 @@ Examples:
         parser.error("--edges must be at least 1")
     if args.devices_per_edge < 0:
         parser.error("--devices-per-edge must be at least 0")
-    if args.cloud_port < 1024 or args.cloud_port > 65535:
-        parser.error("--cloud-port must be between 1024 and 65535")
-    if args.edge_base_port < 1024 or args.edge_base_port > 65535:
-        parser.error("--edge-base-port must be between 1024 and 65535")
-    
-    # Check for port conflicts
-    max_edge_port = args.edge_base_port + args.edges - 1
-    if args.cloud_port >= args.edge_base_port and args.cloud_port <= max_edge_port:
-        parser.error(f"Cloud port {args.cloud_port} conflicts with edge port range {args.edge_base_port}-{max_edge_port}")
     
     try:
         runner = TimeRunner(args)
         runner.run()
     except KeyboardInterrupt:
-        print("\nInterrupted by user")
+        print("\n[SHUTDOWN] Interrupted by user")
         sys.exit(0)
     except Exception as e:
-        print(f"Fatal error: {e}")
+        print(f"[ERROR] Fatal error: {e}")
         sys.exit(1)
 
 

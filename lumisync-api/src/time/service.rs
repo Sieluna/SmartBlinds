@@ -236,6 +236,10 @@ impl<T: TimeProvider, U: UuidGenerator> TimeSyncService<T, U> {
         self.pending_requests.len()
     }
 
+    pub fn get_time_provider(&self) -> &T {
+        &self.time_provider
+    }
+
     #[cfg(test)]
     pub fn get_synchronizer_mut(&mut self) -> &mut TimeSynchronizer {
         &mut self.synchronizer

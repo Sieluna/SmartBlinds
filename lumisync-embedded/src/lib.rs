@@ -6,21 +6,21 @@ extern crate alloc;
 extern crate std;
 
 pub mod control;
+pub mod device;
+pub mod edge;
 pub mod error;
-pub mod message;
 pub mod network;
 pub mod sensor;
 pub mod stepper;
 pub mod storage;
-pub mod time;
 pub mod transport;
 
 pub use control::*;
+pub use device::*;
+pub use edge::*;
 pub use error::*;
-pub use message::*;
 pub use network::*;
 pub use sensor::*;
 pub use stepper::*;
 pub use storage::*;
-pub use time::*;
 pub use transport::*;

@@ -9,8 +9,8 @@ use lumisync_api::uuid::{DeviceBasedUuidGenerator, UuidGenerator};
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{Mutex, mpsc};
 use tokio::signal;
+use tokio::sync::{Mutex, mpsc};
 
 type SharedTimeSync = Arc<Mutex<DeviceTimeSync>>;
 type SharedMetrics = Arc<Mutex<DeviceMetrics>>;
@@ -144,6 +144,7 @@ pub struct DeviceConfig {
     pub status_report_interval_ms: u64,
     pub max_reconnect_attempts: u8,
     pub connection_timeout_ms: u64,
+    pub target_edge_id: u8,
 }
 
 impl Default for DeviceConfig {
@@ -155,6 +156,7 @@ impl Default for DeviceConfig {
             status_report_interval_ms: 30000, // 30 seconds status report
             max_reconnect_attempts: 5,
             connection_timeout_ms: 5000,
+            target_edge_id: 1, // Default to edge 1
         }
     }
 }
@@ -234,7 +236,10 @@ impl SimpleDevice {
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.is_running.store(true, Ordering::SeqCst);
 
-        println!("Starting device {:?}", self.config.device_mac);
+        println!(
+            "[DEVICE-{:02X}] Starting device -> Edge({})",
+            self.config.device_mac[5], self.config.target_edge_id
+        );
 
         let (message_tx, message_rx) = mpsc::unbounded_channel();
         self.message_sender = Some(message_tx);
@@ -246,18 +251,13 @@ impl SimpleDevice {
 
         // Run main loop with integrated shutdown handling
         self.run_main_loop(message_rx).await?;
-        
+
         self.shutdown().await;
         Ok(())
     }
 
     /// Connect to edge node
     async fn connect_to_edge(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!(
-            "Connecting to edge server: {}",
-            self.config.edge_server_addr
-        );
-
         let stream = TcpStream::connect(&self.config.edge_server_addr).await?;
         let tcp_adapter = TcpAdapter::new(stream);
         let transport = AsyncMessageTransport::new(tcp_adapter)
@@ -272,7 +272,10 @@ impl SimpleDevice {
             metrics.last_edge_contact = Some(Instant::now());
         }
 
-        println!("Connected to edge server");
+        println!(
+            "[DEVICE-{:02X}] Connected to {}",
+            self.config.device_mac[5], self.config.edge_server_addr
+        );
         Ok(())
     }
 
@@ -283,6 +286,7 @@ impl SimpleDevice {
         let metrics = Arc::clone(&self.metrics);
         let is_running = Arc::clone(&self.is_running);
         let device_mac = self.config.device_mac;
+        let target_edge_id = self.config.target_edge_id;
         let uuid_generator = self.uuid_generator.clone();
         let sequence_counter = Arc::clone(&self.sequence_counter);
         let message_sender = self.message_sender.clone().unwrap();
@@ -305,7 +309,7 @@ impl SimpleDevice {
                             timestamp: time_sync.get_current_time(),
                             priority: Priority::Regular,
                             source: NodeId::Device(device_mac),
-                            target: NodeId::Edge(1),
+                            target: NodeId::Edge(target_edge_id),
                         },
                         payload: MessagePayload::TimeSync(TimeSyncPayload::Request {
                             sequence,
@@ -318,8 +322,6 @@ impl SimpleDevice {
                         }),
                     }
                 };
-
-                println!("Sending time sync request (sequence: {})", sequence);
 
                 // Send message through channel to main loop
                 if message_sender.send(message).is_err() {
@@ -340,6 +342,7 @@ impl SimpleDevice {
         let time_sync = Arc::clone(&self.time_sync);
         let is_running = Arc::clone(&self.is_running);
         let device_mac = self.config.device_mac;
+        let target_edge_id = self.config.target_edge_id;
         let uuid_generator = self.uuid_generator.clone();
         let message_sender = self.message_sender.clone().unwrap();
 
@@ -358,23 +361,11 @@ impl SimpleDevice {
                             timestamp: time_sync.get_current_time(),
                             priority: Priority::Regular,
                             source: NodeId::Device(device_mac),
-                            target: NodeId::Edge(1),
+                            target: NodeId::Edge(target_edge_id),
                         },
                         payload: MessagePayload::TimeSync(TimeSyncPayload::StatusQuery),
                     }
                 };
-
-                println!(
-                    "Device status - Sync: {}, Uptime: {}ms",
-                    {
-                        let time_sync = time_sync.lock().await;
-                        time_sync.is_synced()
-                    },
-                    {
-                        let time_sync = time_sync.lock().await;
-                        time_sync.get_relative_timestamp()
-                    }
-                );
 
                 if message_sender.send(message).is_err() {
                     break;
@@ -388,9 +379,10 @@ impl SimpleDevice {
         let metrics = Arc::clone(&self.metrics);
         let time_sync = Arc::clone(&self.time_sync);
         let is_running = Arc::clone(&self.is_running);
+        let device_mac = self.config.device_mac;
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(90));
 
             while is_running.load(Ordering::SeqCst) {
                 interval.tick().await;
@@ -402,17 +394,19 @@ impl SimpleDevice {
                     metrics.uptime_ms = time_sync.get_relative_timestamp();
                 }
 
-                let metrics_snapshot = {
+                let (metrics_snapshot, is_synced) = {
                     let metrics = metrics.lock().await;
-                    metrics.clone()
+                    let time_sync = time_sync.lock().await;
+                    (metrics.clone(), time_sync.is_synced())
                 };
 
                 println!(
-                    "Device Metrics - Messages sent: {}, received: {}, sync updates: {}, uptime: {}ms",
+                    "[DEVICE-{:02X}] Status: {}, {}msg sent/{}recv, {}s uptime",
+                    device_mac[5],
+                    if is_synced { "SYNCED" } else { "UNSYNCED" },
                     metrics_snapshot.messages_sent,
                     metrics_snapshot.messages_received,
-                    metrics_snapshot.sync_updates,
-                    metrics_snapshot.uptime_ms
+                    metrics_snapshot.uptime_ms / 1000
                 );
             }
         });
@@ -427,26 +421,21 @@ impl SimpleDevice {
             tokio::select! {
                 // Handle shutdown signals
                 _ = signal::ctrl_c() => {
-                    println!("Received shutdown signal, stopping device...");
+                    println!("[DEVICE-{:02X}] Shutdown signal received", self.config.device_mac[5]);
                     self.is_running.store(false, Ordering::SeqCst);
                     break;
                 }
                 // Handle outgoing messages from background tasks
                 Some(message) = message_rx.recv() => {
                     if let Some(ref mut transport) = self.edge_transport {
-                        match transport.send_message(&message, Some(Protocol::Postcard), None).await {
-                            Ok(_) => {
-                                // Message sent successfully
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to send message to edge: {}", e);
+                        if let Err(e) = transport.send_message(&message, Some(Protocol::Postcard), None).await {
+                            eprintln!("[ERROR] Device-{:02X}: Send failed: {}", self.config.device_mac[5], e);
 
-                                if let Err(e) = self.connect_to_edge().await {
-                                    eprintln!("Failed to reconnect to edge: {}", e);
-                                    let mut metrics = self.metrics.lock().await;
-                                    metrics.connection_failures += 1;
-                                    tokio::time::sleep(Duration::from_secs(5)).await;
-                                }
+                            if let Err(e) = self.connect_to_edge().await {
+                                eprintln!("[ERROR] Device-{:02X}: Reconnect failed: {}", self.config.device_mac[5], e);
+                                let mut metrics = self.metrics.lock().await;
+                                metrics.connection_failures += 1;
+                                tokio::time::sleep(Duration::from_secs(5)).await;
                             }
                         }
                     }
@@ -471,10 +460,11 @@ impl SimpleDevice {
         if let Some(ref mut transport) = self.edge_transport {
             match transport.receive_message::<Message>().await {
                 Ok((message, _protocol, _stream_id)) => {
-                    println!("Received message from edge: {:?}", message.header.source);
-
                     if let Err(e) = self.process_edge_message(&message).await {
-                        eprintln!("Error processing edge message: {}", e);
+                        eprintln!(
+                            "[ERROR] Device-{:02X}: Message processing error: {}",
+                            self.config.device_mac[5], e
+                        );
                     }
 
                     // Update metrics
@@ -485,11 +475,17 @@ impl SimpleDevice {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error receiving message from edge: {}", e);
+                    eprintln!(
+                        "[ERROR] Device-{:02X}: Receive error: {}",
+                        self.config.device_mac[5], e
+                    );
 
                     // Try to reconnect
                     if let Err(e) = self.connect_to_edge().await {
-                        eprintln!("Failed to reconnect to edge: {}", e);
+                        eprintln!(
+                            "[ERROR] Device-{:02X}: Reconnect failed: {}",
+                            self.config.device_mac[5], e
+                        );
 
                         // Update failure metrics
                         {
@@ -514,22 +510,33 @@ impl SimpleDevice {
                 TimeSyncPayload::Response { .. } => {
                     let mut time_sync = self.time_sync.lock().await;
                     if let Err(e) = time_sync.handle_time_sync_response(message) {
-                        eprintln!("Failed to handle time sync response: {}", e);
+                        eprintln!(
+                            "[ERROR] Device-{:02X}: Sync response error: {}",
+                            self.config.device_mac[5], e
+                        );
                     } else {
                         let mut metrics = self.metrics.lock().await;
                         metrics.sync_updates += 1;
-                        println!("Time synchronized with edge node");
+                        println!(
+                            "[SUCCESS] Device-{:02X}: Time synchronized",
+                            self.config.device_mac[5]
+                        );
                     }
                 }
                 TimeSyncPayload::StatusResponse { is_synced, .. } => {
-                    println!("Edge time sync status: synced = {}", is_synced);
+                    if !is_synced {
+                        println!(
+                            "[WARN] Device-{:02X}: Edge not synchronized",
+                            self.config.device_mac[5]
+                        );
+                    }
                 }
                 _ => {
-                    println!("Unhandled time sync message type");
+                    // Other time sync message types - no logging needed
                 }
             },
             _ => {
-                println!("Unhandled message type from edge: {:?}", message.payload);
+                // Other message types - no logging needed
             }
         }
         Ok(())
@@ -547,10 +554,8 @@ impl SimpleDevice {
 
     /// Graceful shutdown
     pub async fn shutdown(&mut self) {
-        println!("Shutting down device...");
+        println!("[DEVICE-{:02X}] Shutting down", self.config.device_mac[5]);
         self.is_running.store(false, Ordering::SeqCst);
-
-        println!("Device shutdown completed");
     }
 }
 
@@ -629,6 +634,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
+            "--target-edge" | "-t" => {
+                if i + 1 < args.len() {
+                    match args[i + 1].parse::<u8>() {
+                        Ok(edge_id) => {
+                            config.target_edge_id = edge_id;
+                            println!("Using target edge ID: {}", edge_id);
+                        }
+                        Err(_) => {
+                            eprintln!("Error: Invalid target edge ID '{}'", args[i + 1]);
+                            std::process::exit(1);
+                        }
+                    }
+                    i += 1;
+                } else {
+                    eprintln!("Error: --target-edge requires a value");
+                    std::process::exit(1);
+                }
+            }
             "--help" | "-h" => {
                 println!("Time Device Node");
                 println!("Usage: {} [OPTIONS]", args[0]);
@@ -636,8 +659,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Options:");
                 println!("  --edge-addr, -e <ADDR>       Set edge server address (default: 127.0.0.1:9090)");
                 println!("  --device-mac, -m <MAC>       Set device MAC address (default: 12:34:56:78:9A:BC)");
-                println!("  --sync-interval, -s <SEC>    Set sync request interval in seconds (default: 30)");
-                println!("  --status-interval, -r <SEC>  Set status report interval in seconds (default: 60)");
+                println!("  --sync-interval, -s <SEC>    Set sync request interval in seconds (default: 60)");
+                println!("  --status-interval, -r <SEC>  Set status report interval in seconds (default: 30)");
+                println!("  --target-edge, -t <ID>       Set target edge node ID (default: 1)");
                 println!("  --help, -h                   Show this help message");
                 println!();
                 println!("Examples:");

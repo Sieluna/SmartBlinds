@@ -54,7 +54,8 @@ async fn start_server(
     let message_router = Arc::new(MessageRouter::new(message_processor_tx));
 
     // Start background services
-    let (mut message_service, _) = MessageService::new(storage, message_router.clone());
+    let config = services::message_service::ServiceConfig::default();
+    let mut message_service = MessageService::new(storage.clone(), config).await?;
     message_service.start().await?;
 
     let tcp_transport = TcpTransport::new(tcp_addr, message_router.clone());

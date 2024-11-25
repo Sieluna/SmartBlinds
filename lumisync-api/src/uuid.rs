@@ -1,5 +1,7 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use alloc::sync::Arc;
+
 use uuid::Uuid;
 
 pub trait UuidGenerator: Send + Sync {
@@ -14,6 +16,7 @@ pub trait UuidGenerator: Send + Sync {
 }
 
 #[cfg(feature = "std")]
+#[derive(Clone)]
 pub struct RandomUuidGenerator;
 
 #[cfg(feature = "std")]
@@ -23,16 +26,17 @@ impl UuidGenerator for RandomUuidGenerator {
     }
 }
 
+#[derive(Clone)]
 pub struct DeviceBasedUuidGenerator {
     device_mac: [u8; 6],
-    counter: AtomicUsize,
+    counter: Arc<AtomicUsize>,
 }
 
 impl DeviceBasedUuidGenerator {
     pub fn new(device_mac: [u8; 6]) -> Self {
         Self {
             device_mac,
-            counter: AtomicUsize::new(0),
+            counter: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -57,15 +61,6 @@ impl UuidGenerator for DeviceBasedUuidGenerator {
 
         bytes[6..14].copy_from_slice(&hash.to_be_bytes());
         Uuid::from_bytes(bytes)
-    }
-}
-
-impl Clone for DeviceBasedUuidGenerator {
-    fn clone(&self) -> Self {
-        Self {
-            device_mac: self.device_mac,
-            counter: AtomicUsize::new(self.counter.load(Ordering::SeqCst)),
-        }
     }
 }
 

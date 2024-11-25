@@ -10,8 +10,8 @@ use lumisync_api::uuid::RandomUuidGenerator;
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
 use tokio::signal;
+use tokio::sync::Mutex;
 
 type DeviceConnections = Arc<Mutex<HashMap<String, Instant>>>;
 type SharedMetrics = Arc<Mutex<CloudMetrics>>;
@@ -120,7 +120,7 @@ impl CloudNode {
         self.is_running.store(true, Ordering::SeqCst);
 
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.config.listen_port)).await?;
-        println!("Cloud node listening on port {}", self.config.listen_port);
+        println!("[CLOUD] Node ready on port {}", self.config.listen_port);
 
         self.start_metrics_task().await;
 
@@ -129,7 +129,6 @@ impl CloudNode {
                 result = listener.accept() => {
                     match result {
                         Ok((stream, addr)) => {
-                            println!("New connection from: {}", addr);
                             let connections = Arc::clone(&self.active_connections);
                             let metrics = Arc::clone(&self.metrics);
                             let sync_config = self.config.sync_config.clone();
@@ -146,15 +145,15 @@ impl CloudNode {
                                 )
                                 .await
                                 {
-                                    eprintln!("Connection error: {}", e);
+                                    eprintln!("[ERROR] Cloud: Connection {} error: {}", addr, e);
                                 }
                             });
                         }
-                        Err(e) => eprintln!("Failed to accept connection: {}", e),
+                        Err(e) => eprintln!("[ERROR] Cloud: Accept failed: {}", e),
                     }
                 }
                 _ = signal::ctrl_c() => {
-                    println!("Received shutdown signal, stopping cloud node...");
+                    println!("[CLOUD] Shutdown signal received");
                     break;
                 }
                 _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
@@ -254,14 +253,18 @@ impl CloudNode {
         let is_running = Arc::clone(&self.is_running);
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(120));
 
             while is_running.load(Ordering::SeqCst) {
                 interval.tick().await;
 
-                let active_count = {
+                let (active_count, sync_stats) = {
                     let conns = connections.lock().await;
-                    conns.len() as u64
+                    let metrics = metrics.lock().await;
+                    (
+                        conns.len() as u64,
+                        (metrics.total_sync_requests, metrics.successful_syncs),
+                    )
                 };
 
                 {
@@ -269,7 +272,12 @@ impl CloudNode {
                     metrics.active_connections = active_count;
                 }
 
-                println!("Active connections: {}", active_count);
+                if active_count > 0 {
+                    println!(
+                        "[STATUS] Cloud: {} connections, {}/{} sync requests successful",
+                        active_count, sync_stats.1, sync_stats.0
+                    );
+                }
             }
         });
     }
@@ -279,11 +287,13 @@ impl CloudNode {
     }
 
     async fn shutdown(&mut self) {
-        println!("Shutting down cloud node...");
+        println!("[CLOUD] Shutting down");
         self.is_running.store(false, Ordering::SeqCst);
 
         let connections = self.active_connections.lock().await;
-        println!("Closing {} active connections", connections.len());
+        if !connections.is_empty() {
+            println!("[CLOUD] Closed {} connections", connections.len());
+        }
     }
 }
 

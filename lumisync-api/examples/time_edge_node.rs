@@ -4,21 +4,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use lumisync_api::message::*;
-use lumisync_api::time::{SyncConfig, SyncStatus, TimeProvider, TimeSyncService};
+use lumisync_api::time::{SyncConfig, TimeProvider, TimeSyncCoordinator, TimeSyncService};
 use lumisync_api::transport::{AsyncMessageTransport, Protocol};
 use lumisync_api::uuid::DeviceBasedUuidGenerator;
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
 use tokio::signal;
+use tokio::sync::Mutex;
 
 type DeviceConnections = Arc<Mutex<HashMap<String, Instant>>>;
-type SharedMetrics = Arc<Mutex<EdgeMetrics>>;
-type RunningFlag = Arc<AtomicBool>;
-type CloudTransport = Arc<Mutex<Option<AsyncMessageTransport<TcpAdapter>>>>;
+type SharedCoordinator =
+    Arc<Mutex<TimeSyncCoordinator<EdgeTimeProvider, DeviceBasedUuidGenerator>>>;
 
-/// Edge time provider without authoritative time source
+#[derive(Clone)]
 pub struct EdgeTimeProvider {
     start_time: Instant,
 }
@@ -37,7 +36,7 @@ impl TimeProvider for EdgeTimeProvider {
     }
 
     fn wall_clock_time(&self) -> Option<OffsetDateTime> {
-        None // Edge node has no authoritative time source
+        None
     }
 
     fn has_authoritative_time(&self) -> bool {
@@ -45,47 +44,27 @@ impl TimeProvider for EdgeTimeProvider {
     }
 }
 
-/// Edge node configuration
+/// Simple edge configuration
 #[derive(Debug, Clone)]
-pub struct EdgeNodeConfig {
+pub struct EdgeConfig {
     pub edge_id: u8,
-    pub cloud_server_addr: String,
-    pub device_listen_port: u16,
-    pub sync_config: SyncConfig,
-    pub cloud_sync_interval_ms: u64,
+    pub cloud_addr: String,
+    pub device_port: u16,
+    pub max_devices: usize,
 }
 
-impl Default for EdgeNodeConfig {
+impl Default for EdgeConfig {
     fn default() -> Self {
         Self {
             edge_id: 1,
-            cloud_server_addr: "127.0.0.1:8080".to_string(),
-            device_listen_port: 9090,
-            sync_config: SyncConfig {
-                sync_interval_ms: 10000, // 10 seconds sync with cloud
-                max_drift_ms: 100,       // 100ms drift threshold
-                offset_history_size: 5,
-                delay_threshold_ms: 50,
-                max_retry_count: 3,
-                failure_cooldown_ms: 30000,
-            },
-            cloud_sync_interval_ms: 30000, // 30 seconds
+            cloud_addr: "127.0.0.1:8080".to_string(),
+            device_port: 9090,
+            max_devices: 10,
         }
     }
 }
 
-/// Edge metrics
-#[derive(Debug, Clone, Default)]
-pub struct EdgeMetrics {
-    pub cloud_sync_requests: u64,
-    pub cloud_sync_successes: u64,
-    pub cloud_sync_failures: u64,
-    pub device_messages_received: u64,
-    pub device_messages_sent: u64,
-    pub connected_devices: usize,
-}
-
-/// TCP adapter for async transport
+/// TCP adapter for transport
 pub struct TcpAdapter {
     stream: TcpStream,
 }
@@ -116,64 +95,76 @@ impl embedded_io_async::Write for TcpAdapter {
     }
 }
 
-/// Edge node for time synchronization
-pub struct EdgeNode {
-    config: EdgeNodeConfig,
-    time_service: TimeSyncService<EdgeTimeProvider, DeviceBasedUuidGenerator>,
-    device_connections: DeviceConnections,
-    cloud_transport: CloudTransport,
-    metrics: SharedMetrics,
-    is_running: RunningFlag,
-    sequence_counter: Arc<std::sync::atomic::AtomicU32>,
+/// Simple edge node with coordinator
+pub struct SimpleEdgeNode {
+    config: EdgeConfig,
+    coordinator: SharedCoordinator,
+    connections: DeviceConnections,
+    is_running: Arc<AtomicBool>,
 }
 
-impl EdgeNode {
-    pub fn new(config: EdgeNodeConfig) -> Self {
+impl SimpleEdgeNode {
+    pub fn new(config: EdgeConfig) -> Self {
+        // Create coordinator
+        let mut coordinator = TimeSyncCoordinator::new();
+
+        // Create edge service
         let time_provider = EdgeTimeProvider::new();
-        let node_id = NodeId::Edge(config.edge_id);
+        let edge_node_id = NodeId::Edge(config.edge_id);
         let device_mac = [0xED, 0x6E, 0x00, 0x00, 0x00, config.edge_id];
         let uuid_generator = DeviceBasedUuidGenerator::new(device_mac);
 
-        let time_service = TimeSyncService::new(
-            time_provider,
-            node_id,
-            config.sync_config.clone(),
-            uuid_generator,
-        );
+        let sync_config = SyncConfig {
+            sync_interval_ms: 30000,
+            max_drift_ms: 100,
+            offset_history_size: 5,
+            delay_threshold_ms: 50,
+            max_retry_count: 3,
+            failure_cooldown_ms: 30000,
+        };
+
+        let edge_service =
+            TimeSyncService::new(time_provider, edge_node_id, sync_config, uuid_generator);
+
+        // Add edge service to coordinator
+        coordinator.add_service(edge_node_id, edge_service);
 
         Self {
             config,
-            time_service,
-            device_connections: Arc::new(Mutex::new(HashMap::new())),
-            cloud_transport: Arc::new(Mutex::new(None)),
-            metrics: Arc::new(Mutex::new(EdgeMetrics::default())),
+            coordinator: Arc::new(Mutex::new(coordinator)),
+            connections: Arc::new(Mutex::new(HashMap::new())),
             is_running: Arc::new(AtomicBool::new(false)),
-            sequence_counter: Arc::new(std::sync::atomic::AtomicU32::new(0)),
         }
     }
 
-    /// Start edge node service
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// Start the edge node
+    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.is_running.store(true, Ordering::SeqCst);
 
-        println!("Starting Edge Node {}", self.config.edge_id);
+        println!("[EDGE-{}] Starting edge node", self.config.edge_id);
+        println!(
+            "[EDGE-{}] Device port: {}",
+            self.config.edge_id, self.config.device_port
+        );
+        println!(
+            "[EDGE-{}] Cloud: {}",
+            self.config.edge_id, self.config.cloud_addr
+        );
 
-        // Establish persistent connection to cloud
-        self.connect_to_cloud().await?;
-
-        // Start device listener service
+        // Start device listener
         self.start_device_listener().await?;
 
-        // Start background tasks
-        self.start_cloud_sync_task().await;
-        self.start_cloud_connection_manager().await;
-        self.start_metrics_task().await;
+        // Start cloud sync task
+        self.start_cloud_sync().await;
 
-        // Main event loop with graceful shutdown
+        // Start status monitoring
+        self.start_status_monitor().await;
+
+        // Main loop
         loop {
             tokio::select! {
                 _ = signal::ctrl_c() => {
-                    println!("Received shutdown signal, stopping edge node...");
+                    println!("[EDGE-{}] Shutdown signal received", self.config.edge_id);
                     break;
                 }
                 _ = tokio::time::sleep(Duration::from_secs(1)) => {
@@ -188,103 +179,42 @@ impl EdgeNode {
         Ok(())
     }
 
-    /// Establish persistent connection to cloud
-    async fn connect_to_cloud(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        println!(
-            "Connecting to cloud server: {}",
-            self.config.cloud_server_addr
-        );
-
-        match TcpStream::connect(&self.config.cloud_server_addr).await {
-            Ok(stream) => {
-                let tcp_adapter = TcpAdapter::new(stream);
-                let transport = AsyncMessageTransport::new(tcp_adapter)
-                    .with_default_protocol(Protocol::Postcard)
-                    .with_crc(true);
-
-                let mut cloud_transport = self.cloud_transport.lock().await;
-                *cloud_transport = Some(transport);
-
-                println!("Connected to cloud server");
-                Ok(())
-            }
-            Err(e) => {
-                eprintln!("Failed to connect to cloud: {}", e);
-                Err(Box::new(e))
-            }
-        }
-    }
-
-    /// Start cloud connection manager to handle reconnection
-    async fn start_cloud_connection_manager(&self) {
-        let cloud_transport = Arc::clone(&self.cloud_transport);
-        let cloud_addr = self.config.cloud_server_addr.clone();
+    /// Start device listener
+    async fn start_device_listener(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", self.config.device_port)).await?;
+        let connections = Arc::clone(&self.connections);
+        let coordinator = Arc::clone(&self.coordinator);
         let is_running = Arc::clone(&self.is_running);
+        let config = self.config.clone();
 
         tokio::spawn(async move {
-            let mut reconnect_interval = tokio::time::interval(Duration::from_secs(30));
-
-            while is_running.load(Ordering::SeqCst) {
-                reconnect_interval.tick().await;
-
-                let needs_reconnect = {
-                    let transport_guard = cloud_transport.lock().await;
-                    transport_guard.is_none()
-                };
-
-                if needs_reconnect {
-                    if let Ok(stream) = TcpStream::connect(&cloud_addr).await {
-                        let tcp_adapter = TcpAdapter::new(stream);
-                        let transport = AsyncMessageTransport::new(tcp_adapter)
-                            .with_default_protocol(Protocol::Postcard)
-                            .with_crc(true);
-
-                        let mut cloud_transport_guard = cloud_transport.lock().await;
-                        *cloud_transport_guard = Some(transport);
-
-                        println!("Reconnected to cloud");
-                    }
-                }
-            }
-        });
-    }
-
-    /// Start device listener service
-    async fn start_device_listener(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", self.config.device_listen_port)).await?;
-        let device_connections = Arc::clone(&self.device_connections);
-        let metrics = Arc::clone(&self.metrics);
-        let is_running = Arc::clone(&self.is_running);
-        let listen_port = self.config.device_listen_port;
-
-        tokio::spawn(async move {
-            println!("Device listener started on port {}", listen_port);
+            println!("[EDGE-{}] Ready for device connections", config.edge_id);
 
             while is_running.load(Ordering::SeqCst) {
                 tokio::select! {
                     result = listener.accept() => {
-                        match result {
-                            Ok((stream, addr)) => {
-                                println!("Device connected from: {}", addr);
-                                let connections = Arc::clone(&device_connections);
-                                let metrics = Arc::clone(&metrics);
-                                let is_running = Arc::clone(&is_running);
+                        if let Ok((stream, addr)) = result {
+                            println!("[EDGE-{}] Device connected: {}", config.edge_id, addr);
 
-                                tokio::spawn(async move {
-                                    if let Err(e) = Self::handle_device_connection(
-                                        stream,
-                                        addr.to_string(),
-                                        connections,
-                                        metrics,
-                                        is_running,
-                                    )
-                                    .await
-                                    {
-                                        eprintln!("Device connection error: {}", e);
-                                    }
-                                });
-                            }
-                            Err(e) => eprintln!("Failed to accept device connection: {}", e),
+                            let connections = Arc::clone(&connections);
+                            let coordinator = Arc::clone(&coordinator);
+                            let is_running = Arc::clone(&is_running);
+                            let max_devices = config.max_devices;
+                            let edge_id = config.edge_id;
+
+                            tokio::spawn(async move {
+                                if let Err(e) = Self::handle_device(
+                                    stream,
+                                    addr.to_string(),
+                                    connections,
+                                    coordinator,
+                                    is_running,
+                                    max_devices,
+                                    edge_id,
+                                ).await {
+                                    eprintln!("[ERROR] Edge-{}: Device {} error: {}", edge_id, addr, e);
+                                }
+                            });
                         }
                     }
                     _ = tokio::time::sleep(Duration::from_secs(1)) => {
@@ -300,351 +230,325 @@ impl EdgeNode {
     }
 
     /// Handle device connection
-    async fn handle_device_connection(
+    async fn handle_device(
         stream: TcpStream,
         addr: String,
-        device_connections: DeviceConnections,
-        metrics: SharedMetrics,
-        is_running: RunningFlag,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        connections: DeviceConnections,
+        coordinator: SharedCoordinator,
+        is_running: Arc<AtomicBool>,
+        max_devices: usize,
+        edge_id: u8,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let tcp_adapter = TcpAdapter::new(stream);
         let mut transport = AsyncMessageTransport::new(tcp_adapter)
             .with_default_protocol(Protocol::Postcard)
             .with_crc(true);
 
+        // Add connection
         {
-            let mut connections = device_connections.lock().await;
+            let mut connections = connections.lock().await;
             connections.insert(addr.clone(), Instant::now());
         }
+
+        let mut device_node_id: Option<NodeId> = None;
+        let mut message_count = 0u64;
 
         while is_running.load(Ordering::SeqCst) {
             tokio::select! {
                 result = transport.receive_message::<Message>() => {
                     match result {
                         Ok((message, _protocol, _stream_id)) => {
+                            message_count += 1;
+
+                            // Update connection time
                             {
-                                let mut connections = device_connections.lock().await;
+                                let mut connections = connections.lock().await;
                                 connections.insert(addr.clone(), Instant::now());
                             }
 
-                            if let Some(response) = Self::process_device_message(&message).await {
-                                if transport
-                                    .send_message(&response, Some(Protocol::Postcard), None)
-                                    .await
-                                    .is_err()
-                                {
-                                    break;
-                                }
-
-                                {
-                                    let mut metrics = metrics.lock().await;
-                                    metrics.device_messages_sent += 1;
+                            // Add device service if not exists
+                            if device_node_id.is_none() {
+                                match Self::add_device_service(
+                                    &coordinator,
+                                    &message,
+                                    max_devices,
+                                ).await {
+                                    Ok(node_id) => {
+                                        device_node_id = Some(node_id);
+                                        println!("[EDGE-{}] Device registered: {:?}", edge_id, node_id);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[ERROR] Edge-{}: Failed to register device: {}", edge_id, e);
+                                    }
                                 }
                             }
 
-                            {
-                                let mut metrics = metrics.lock().await;
-                                metrics.device_messages_received += 1;
+                            // Process message through coordinator
+                            match Self::process_message(&coordinator, &message).await {
+                                Some(response) => {
+                                    if let Err(e) = transport.send_message(&response, Some(Protocol::Postcard), None).await {
+                                        eprintln!("[ERROR] Edge-{}: Failed to send response: {}", edge_id, e);
+                                        break;
+                                    }
+                                }
+                                None => {
+                                    eprintln!("[WARN] Edge-{}: No response for message from {:?} to {:?}",
+                                        edge_id, message.header.source, message.header.target);
+                                }
                             }
                         }
-                        Err(_) => break,
+                        Err(e) => {
+                            eprintln!("[ERROR] Edge-{}: Message receive error: {}", edge_id, e);
+                            break;
+                        }
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_secs(30)) => continue,
+                _ = tokio::time::sleep(Duration::from_secs(60)) => {
+                    // Periodic connection check
+                    continue;
+                }
             }
         }
 
+        // Cleanup
+        if let Some(node_id) = device_node_id {
+            let mut coordinator = coordinator.lock().await;
+            coordinator.remove_service(node_id);
+            println!(
+                "[EDGE-{}] Device disconnected: {:?} (processed {} messages)",
+                edge_id, node_id, message_count
+            );
+        }
+
         {
-            let mut connections = device_connections.lock().await;
+            let mut connections = connections.lock().await;
             connections.remove(&addr);
         }
 
         Ok(())
     }
 
-    /// Process device message
-    async fn process_device_message(message: &Message) -> Option<Message> {
-        match &message.payload {
-            MessagePayload::TimeSync(TimeSyncPayload::Request { sequence, .. }) => {
-                // Simple time sync response for demonstration
-                Some(Message {
-                    header: MessageHeader {
-                        id: uuid::Uuid::new_v4(),
-                        timestamp: OffsetDateTime::now_utc(),
-                        priority: Priority::Regular,
-                        source: NodeId::Edge(1),
-                        target: message.header.source,
-                    },
-                    payload: MessagePayload::TimeSync(TimeSyncPayload::Response {
-                        request_sequence: *sequence,
-                        request_receive_time: OffsetDateTime::now_utc(),
-                        response_send_time: OffsetDateTime::now_utc(),
-                        estimated_delay_ms: 20,
-                        accuracy_ms: 10,
-                    }),
-                })
-            }
-            MessagePayload::TimeSync(TimeSyncPayload::StatusQuery) => Some(Message {
-                header: MessageHeader {
-                    id: uuid::Uuid::new_v4(),
-                    timestamp: OffsetDateTime::now_utc(),
-                    priority: Priority::Regular,
-                    source: NodeId::Edge(1),
-                    target: message.header.source,
-                },
-                payload: MessagePayload::TimeSync(TimeSyncPayload::StatusResponse {
-                    is_synced: true,
-                    current_offset_ms: 0,
-                    last_sync_time: OffsetDateTime::now_utc(),
-                    accuracy_ms: 10,
-                }),
-            }),
-            _ => {
-                println!(
-                    "Received other message type from device: {:?}",
-                    message.payload
-                );
-                None
-            }
+    /// Add device service to coordinator
+    async fn add_device_service(
+        coordinator: &SharedCoordinator,
+        message: &Message,
+        max_devices: usize,
+    ) -> Result<NodeId, &'static str> {
+        let mut coordinator = coordinator.lock().await;
+
+        let current_count = coordinator.service_count();
+        if current_count >= max_devices {
+            return Err("Max devices reached");
         }
+
+        let device_node_id = message.header.source;
+
+        // Check if already exists
+        if coordinator.get_service_immutable(device_node_id).is_some() {
+            return Ok(device_node_id);
+        }
+
+        // Create device service
+        let time_provider = EdgeTimeProvider::new();
+        let device_mac = match device_node_id {
+            NodeId::Device(mac) => mac,
+            _ => [0xDE, 0xDC, 0xCE, 0x00, 0x00, 0x01],
+        };
+        let uuid_generator = DeviceBasedUuidGenerator::new(device_mac);
+
+        let sync_config = SyncConfig {
+            sync_interval_ms: 10000,
+            max_drift_ms: 50,
+            offset_history_size: 3,
+            delay_threshold_ms: 30,
+            max_retry_count: 2,
+            failure_cooldown_ms: 10000,
+        };
+
+        let device_service =
+            TimeSyncService::new(time_provider, device_node_id, sync_config, uuid_generator);
+
+        coordinator.add_service(device_node_id, device_service);
+        Ok(device_node_id)
     }
 
-    /// Start cloud sync task with persistent connection
-    async fn start_cloud_sync_task(&self) {
-        let sync_interval = self.config.cloud_sync_interval_ms;
-        let cloud_transport = Arc::clone(&self.cloud_transport);
-        let metrics = Arc::clone(&self.metrics);
+    /// Process message through coordinator
+    async fn process_message(
+        coordinator: &SharedCoordinator,
+        message: &Message,
+    ) -> Option<Message> {
+        let mut coordinator = coordinator.lock().await;
+        coordinator.handle_time_sync_message(message)
+    }
+
+    /// Start cloud synchronization
+    async fn start_cloud_sync(&self) {
+        let coordinator = Arc::clone(&self.coordinator);
+        let cloud_addr = self.config.cloud_addr.clone();
+        let edge_id = self.config.edge_id;
         let is_running = Arc::clone(&self.is_running);
-        let sequence_counter = Arc::clone(&self.sequence_counter);
 
         tokio::spawn(async move {
-            let mut interval =
-                tokio::time::interval(tokio::time::Duration::from_millis(sync_interval));
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
 
             while is_running.load(Ordering::SeqCst) {
                 interval.tick().await;
 
-                match Self::perform_cloud_sync_persistent(&cloud_transport, &sequence_counter).await
-                {
-                    Ok(_) => {
-                        let mut metrics = metrics.lock().await;
-                        metrics.cloud_sync_successes += 1;
-                        println!("Cloud sync successful (persistent connection)");
-                    }
-                    Err(e) => {
-                        eprintln!("Cloud sync failed: {}", e);
-                        let mut metrics = metrics.lock().await;
-                        metrics.cloud_sync_failures += 1;
-
-                        // Mark connection as invalid on failure
-                        let mut transport_guard = cloud_transport.lock().await;
-                        *transport_guard = None;
-                    }
-                }
-
-                {
-                    let mut metrics = metrics.lock().await;
-                    metrics.cloud_sync_requests += 1;
+                if let Err(e) = Self::sync_with_cloud(&coordinator, &cloud_addr, edge_id).await {
+                    eprintln!("[ERROR] Edge-{}: Cloud sync failed: {}", edge_id, e);
+                } else {
+                    println!("[EDGE-{}] Cloud synchronized", edge_id);
                 }
             }
         });
     }
 
-    /// Perform cloud sync using persistent connection
-    async fn perform_cloud_sync_persistent(
-        cloud_transport: &CloudTransport,
-        sequence_counter: &Arc<std::sync::atomic::AtomicU32>,
-    ) -> Result<(), String> {
-        let mut transport_guard = cloud_transport.lock().await;
+    /// Sync with cloud server
+    async fn sync_with_cloud(
+        coordinator: &SharedCoordinator,
+        cloud_addr: &str,
+        edge_id: u8,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Connect to cloud
+        let stream = TcpStream::connect(cloud_addr).await?;
+        let tcp_adapter = TcpAdapter::new(stream);
+        let mut transport = AsyncMessageTransport::new(tcp_adapter)
+            .with_default_protocol(Protocol::Postcard)
+            .with_crc(true);
 
-        if let Some(ref mut transport) = transport_guard.as_mut() {
-            let sequence = sequence_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let edge_node_id = NodeId::Edge(edge_id);
 
-            // Create time sync request
-            let request = Message {
-                header: MessageHeader {
-                    id: uuid::Uuid::new_v4(),
-                    timestamp: OffsetDateTime::UNIX_EPOCH,
-                    priority: Priority::Regular,
-                    source: NodeId::Edge(1),
-                    target: NodeId::Cloud,
-                },
-                payload: MessagePayload::TimeSync(TimeSyncPayload::Request {
-                    sequence,
-                    send_time: None,
-                    precision_ms: 10,
-                }),
-            };
+        // Create sync request through coordinator
+        let request = {
+            let mut coordinator = coordinator.lock().await;
 
-            // Send request
-            transport
-                .send_message(&request, Some(Protocol::Postcard), None)
-                .await
-                .map_err(|e| format!("Failed to send sync request: {}", e))?;
+            match coordinator.get_service(edge_node_id) {
+                Some(edge_service) => edge_service.create_sync_request(NodeId::Cloud)?,
+                None => {
+                    return Err("Edge service not found".into());
+                }
+            }
+        };
 
-            // Receive response
-            let (_response, _, _): (Message, _, _) = transport
-                .receive_message()
-                .await
-                .map_err(|e| format!("Failed to receive sync response: {}", e))?;
+        // Send request and receive response
+        transport
+            .send_message(&request, Some(Protocol::Postcard), None)
+            .await?;
+        let (response, _protocol, _stream_id) = transport.receive_message::<Message>().await?;
 
-            Ok(())
-        } else {
-            Err("No active cloud connection".to_string())
+        // Process response through coordinator
+        {
+            let mut coordinator = coordinator.lock().await;
+
+            match coordinator.get_service(edge_node_id) {
+                Some(edge_service) => {
+                    edge_service.handle_sync_response(&response)?;
+                }
+                None => {
+                    return Err("Edge service not found during response processing".into());
+                }
+            }
         }
+
+        Ok(())
     }
 
-    /// Start metrics collection task
-    async fn start_metrics_task(&self) {
-        let metrics = Arc::clone(&self.metrics);
-        let device_connections = Arc::clone(&self.device_connections);
+    /// Start status monitoring
+    async fn start_status_monitor(&self) {
+        let coordinator = Arc::clone(&self.coordinator);
+        let connections = Arc::clone(&self.connections);
         let is_running = Arc::clone(&self.is_running);
+        let edge_id = self.config.edge_id;
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+            let mut interval = tokio::time::interval(Duration::from_secs(120));
 
             while is_running.load(Ordering::SeqCst) {
                 interval.tick().await;
 
-                // Update connected device count
-                {
-                    let connections = device_connections.lock().await;
-                    let mut metrics = metrics.lock().await;
-                    metrics.connected_devices = connections.len();
-                }
+                let (service_count, connected_devices) = {
+                    let coordinator = coordinator.lock().await;
+                    let connections = connections.lock().await;
+                    (coordinator.service_count(), connections.len())
+                };
 
-                let metrics_snapshot = {
-                    let metrics = metrics.lock().await;
-                    metrics.clone()
+                let network_status = {
+                    let coordinator = coordinator.lock().await;
+                    coordinator.get_network_status()
                 };
 
                 println!(
-                    "Edge Metrics - Connected devices: {}, Cloud syncs: {}/{}, Device messages: {}",
-                    metrics_snapshot.connected_devices,
-                    metrics_snapshot.cloud_sync_successes,
-                    metrics_snapshot.cloud_sync_requests,
-                    metrics_snapshot.device_messages_received
+                    "[STATUS] Edge-{}: {} services, {} devices, {}/{} synced ({:.0}%)",
+                    edge_id,
+                    service_count,
+                    connected_devices,
+                    network_status.synced_nodes,
+                    network_status.total_nodes,
+                    network_status.sync_ratio() * 100.0
                 );
             }
         });
     }
 
-    /// Graceful shutdown
-    pub async fn shutdown(&mut self) {
-        println!("Shutting down edge node...");
+    /// Shutdown
+    async fn shutdown(&mut self) {
+        println!("[EDGE-{}] Shutting down", self.config.edge_id);
         self.is_running.store(false, Ordering::SeqCst);
 
-        let connections = self.device_connections.lock().await;
-        println!("Closing {} device connections", connections.len());
+        let connections = self.connections.lock().await;
+        if !connections.is_empty() {
+            println!(
+                "[EDGE-{}] Closed {} device connections",
+                self.config.edge_id,
+                connections.len()
+            );
+        }
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut config = EdgeNodeConfig::default();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = EdgeConfig::default();
 
-    // Parse command line arguments
+    // Parse simple command line arguments
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--edge-id" | "-e" => {
                 if i + 1 < args.len() {
-                    match args[i + 1].parse::<u8>() {
-                        Ok(id) => {
-                            config.edge_id = id;
-                            println!("Using edge ID: {}", id);
-                        }
-                        Err(_) => {
-                            eprintln!("Error: Invalid edge ID '{}'", args[i + 1]);
-                            std::process::exit(1);
-                        }
-                    }
+                    config.edge_id = args[i + 1].parse().unwrap_or(1);
                     i += 1;
-                } else {
-                    eprintln!("Error: --edge-id requires a value");
-                    std::process::exit(1);
                 }
             }
             "--cloud-addr" | "-c" => {
                 if i + 1 < args.len() {
-                    config.cloud_server_addr = args[i + 1].clone();
-                    println!("Using cloud address: {}", config.cloud_server_addr);
+                    config.cloud_addr = args[i + 1].clone();
                     i += 1;
-                } else {
-                    eprintln!("Error: --cloud-addr requires a value");
-                    std::process::exit(1);
                 }
             }
-            "--device-port" | "-d" => {
+            "--device-port" | "-p" => {
                 if i + 1 < args.len() {
-                    match args[i + 1].parse::<u16>() {
-                        Ok(port) => {
-                            config.device_listen_port = port;
-                            println!("Using device port: {}", port);
-                        }
-                        Err(_) => {
-                            eprintln!("Error: Invalid device port '{}'", args[i + 1]);
-                            std::process::exit(1);
-                        }
-                    }
+                    config.device_port = args[i + 1].parse().unwrap_or(9090);
                     i += 1;
-                } else {
-                    eprintln!("Error: --device-port requires a value");
-                    std::process::exit(1);
-                }
-            }
-            "--sync-interval" | "-s" => {
-                if i + 1 < args.len() {
-                    match args[i + 1].parse::<u64>() {
-                        Ok(interval) => {
-                            config.cloud_sync_interval_ms = interval * 1000; // Convert seconds to ms
-                            println!("Using sync interval: {}s", interval);
-                        }
-                        Err(_) => {
-                            eprintln!("Error: Invalid sync interval '{}'", args[i + 1]);
-                            std::process::exit(1);
-                        }
-                    }
-                    i += 1;
-                } else {
-                    eprintln!("Error: --sync-interval requires a value");
-                    std::process::exit(1);
                 }
             }
             "--help" | "-h" => {
-                println!("Time Edge Node");
+                println!("Edge Node - Time Synchronization Coordinator");
                 println!("Usage: {} [OPTIONS]", args[0]);
                 println!();
                 println!("Options:");
-                println!("  --edge-id, -e <ID>           Set edge node ID (default: 1)");
-                println!("  --cloud-addr, -c <ADDR>      Set cloud server address (default: 127.0.0.1:8080)");
-                println!("  --device-port, -d <PORT>     Set device listen port (default: 9090)");
-                println!("  --sync-interval, -s <SEC>    Set cloud sync interval in seconds (default: 30)");
-                println!("  --help, -h                   Show this help message");
-                println!();
-                println!("Examples:");
-                println!("  {} --edge-id 2 --device-port 9091", args[0]);
-                println!("  {} --cloud-addr 192.168.1.100:8080", args[0]);
+                println!("  --edge-id, -e <ID>       Edge node ID (default: 1)");
+                println!("  --cloud-addr, -c <ADDR>  Cloud server address (default: 127.0.0.1:8080)");
+                println!("  --device-port, -p <PORT> Device listen port (default: 9090)");
+                println!("  --help, -h               Show help");
                 std::process::exit(0);
-            }
-            arg if arg.starts_with("-") => {
-                eprintln!("Error: Unknown option '{}'", arg);
-                eprintln!("Use --help for usage information");
-                std::process::exit(1);
             }
             _ => {}
         }
         i += 1;
     }
 
-    let mut edge_node = EdgeNode::new(config.clone());
-
-    println!("Starting edge node...");
-    println!("This node synchronizes time with cloud and provides time sync to devices");
-    println!("Edge ID: {}", config.edge_id);
-    println!("Cloud address: {}", config.cloud_server_addr);
-    println!("Device port: {}", config.device_listen_port);
-
+    let mut edge_node = SimpleEdgeNode::new(config);
     edge_node.start().await
 }

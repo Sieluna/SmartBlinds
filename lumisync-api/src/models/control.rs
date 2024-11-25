@@ -24,7 +24,7 @@ pub enum Command {
     /// Stop all operations
     EmergencyStop {
         /// Target region identifier
-        region_id: Id,
+        device_id: Id,
     },
     /// Request device status update
     RequestStatus {
