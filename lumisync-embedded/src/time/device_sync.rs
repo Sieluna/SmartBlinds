@@ -16,6 +16,14 @@ pub enum DeviceSyncState {
     Expired,
 }
 
+/// Simplified device sync metrics for embedded systems
+#[derive(Debug, Clone, Default)]
+pub struct DeviceSyncStats {
+    pub sync_count: u16,       // Total sync attempts (u16 saves memory)
+    pub success_count: u16,    // Successful syncs
+    pub last_accuracy_ms: u16, // Last reported accuracy
+}
+
 #[derive(Debug)]
 pub struct DeviceTimeSync {
     /// Base time provider
@@ -30,6 +38,8 @@ pub struct DeviceTimeSync {
     pub sync_state: DeviceSyncState,
     /// Sync expiry threshold in milliseconds
     pub sync_expiry_threshold_ms: u64,
+    /// Synchronization statistics
+    pub stats: DeviceSyncStats,
 }
 
 impl DeviceTimeSync {
@@ -44,6 +54,7 @@ impl DeviceTimeSync {
             last_sync_time: None,
             sync_state: DeviceSyncState::Unsynced,
             sync_expiry_threshold_ms: Self::DEFAULT_SYNC_EXPIRY_MS,
+            stats: DeviceSyncStats::default(),
         }
     }
 
@@ -57,31 +68,71 @@ impl DeviceTimeSync {
 
     /// Handle time broadcast message
     pub fn handle_time_broadcast(&mut self, message: &Message) -> Result<()> {
-        // Verify message source is from Edge node for security
-        if !matches!(message.header.source, NodeId::Edge(_)) {
-            return Err(Error::InvalidCommand);
+        self.stats.sync_count = self.stats.sync_count.saturating_add(1);
+
+        // Verify message source and target (simplified validation)
+        match (&message.header.source, &message.header.target) {
+            (NodeId::Edge(_), NodeId::Any) => {} // Broadcast from edge - OK
+            (NodeId::Edge(_), NodeId::Device(mac)) if *mac == self.device_mac => {} // Direct message - OK
+            _ => return Err(Error::InvalidCommand), // Invalid source/target
         }
 
-        // Verify target is broadcast or this specific device
-        match message.header.target {
-            NodeId::Any => {}                                   // Broadcast is OK
-            NodeId::Device(mac) if mac == self.device_mac => {} // Direct message is OK
-            _ => return Err(Error::InvalidCommand),             // Wrong target
-        }
-
-        if let MessagePayload::TimeSync(TimeSyncPayload::Broadcast { timestamp, .. }) =
-            &message.payload
+        if let MessagePayload::TimeSync(TimeSyncPayload::Broadcast {
+            timestamp,
+            accuracy_ms,
+            ..
+        }) = &message.payload
         {
             let current_uptime = self.time_provider.monotonic_time_ms();
             let timestamp_ms =
                 timestamp.unix_timestamp() as u64 * 1000 + timestamp.millisecond() as u64;
 
-            // Calculate device offset to match edge's synchronized time
-            let new_offset = timestamp_ms as i64 - current_uptime as i64;
-
-            self.time_offset_ms = new_offset;
+            // Update time synchronization
+            self.time_offset_ms = timestamp_ms as i64 - current_uptime as i64;
             self.last_sync_time = Some(current_uptime);
             self.sync_state = DeviceSyncState::Synced;
+
+            // Update stats
+            self.stats.success_count = self.stats.success_count.saturating_add(1);
+            self.stats.last_accuracy_ms = *accuracy_ms;
+
+            Ok(())
+        } else {
+            Err(Error::InvalidCommand)
+        }
+    }
+
+    /// Handle time sync response message
+    pub fn handle_time_sync_response(&mut self, message: &Message) -> Result<()> {
+        self.stats.sync_count = self.stats.sync_count.saturating_add(1);
+
+        // Verify message source and target
+        match (&message.header.source, &message.header.target) {
+            (NodeId::Edge(_), NodeId::Device(mac)) if *mac == self.device_mac => {} // Response from edge - OK
+            _ => return Err(Error::InvalidCommand), // Invalid source/target
+        }
+
+        if let MessagePayload::TimeSync(TimeSyncPayload::Response {
+            request_receive_time: _,
+            response_send_time,
+            accuracy_ms,
+            ..
+        }) = &message.payload
+        {
+            let current_uptime = self.time_provider.monotonic_time_ms();
+
+            // Simple offset calculation using response send time
+            let response_timestamp_ms = response_send_time.unix_timestamp() as u64 * 1000
+                + response_send_time.millisecond() as u64;
+
+            // Update time synchronization
+            self.time_offset_ms = response_timestamp_ms as i64 - current_uptime as i64;
+            self.last_sync_time = Some(current_uptime);
+            self.sync_state = DeviceSyncState::Synced;
+
+            // Update stats
+            self.stats.success_count = self.stats.success_count.saturating_add(1);
+            self.stats.last_accuracy_ms = *accuracy_ms;
 
             Ok(())
         } else {
@@ -135,10 +186,38 @@ impl DeviceTimeSync {
         self.time_provider.monotonic_time_ms()
     }
 
+    /// Get current time offset in milliseconds
+    pub fn get_time_offset_ms(&self) -> i64 {
+        self.time_offset_ms
+    }
+
+    /// Get sync success rate (0.0 to 1.0)
+    pub fn get_sync_quality(&self) -> f32 {
+        if self.stats.sync_count > 0 {
+            self.stats.success_count as f32 / self.stats.sync_count as f32
+        } else {
+            0.0
+        }
+    }
+
+    /// Get time since last sync in milliseconds
+    pub fn time_since_last_sync_ms(&self) -> Option<u64> {
+        self.last_sync_time.map(|last_sync| {
+            let current_time = self.time_provider.monotonic_time_ms();
+            current_time.saturating_sub(last_sync)
+        })
+    }
+
     /// Reset synchronization state
     pub fn reset(&mut self) {
         self.time_offset_ms = 0;
         self.last_sync_time = None;
         self.sync_state = DeviceSyncState::Unsynced;
+        // Keep stats for monitoring
+    }
+
+    /// Reset statistics (for testing or periodic cleanup)
+    pub fn reset_stats(&mut self) {
+        self.stats = DeviceSyncStats::default();
     }
 }

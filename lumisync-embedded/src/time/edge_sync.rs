@@ -7,6 +7,15 @@ use crate::{Error, Result};
 
 use super::provider::EmbeddedTimeProvider;
 
+#[derive(Debug, Clone, Default)]
+pub struct EdgeSyncStats {
+    pub cloud_syncs: u16,      // Cloud sync attempts
+    pub cloud_successes: u16,  // Successful cloud syncs
+    pub device_requests: u16,  // Device sync requests handled
+    pub broadcasts_sent: u16,  // Time broadcasts sent
+    pub last_accuracy_ms: u16, // Last cloud accuracy
+}
+
 pub struct EdgeTimeSync {
     /// Base time synchronization service
     sync_service: TimeSyncService<EmbeddedTimeProvider, DeviceBasedUuidGenerator>,
@@ -20,6 +29,12 @@ pub struct EdgeTimeSync {
     time_provider: EmbeddedTimeProvider,
     /// UUID generator for creating message IDs
     uuid_generator: DeviceBasedUuidGenerator,
+    /// Number of successful cloud syncs
+    pub cloud_sync_count: u32,
+    /// Number of device sync requests handled
+    pub device_sync_requests: u32,
+    /// Edge synchronization statistics
+    pub stats: EdgeSyncStats,
 }
 
 impl EdgeTimeSync {
@@ -53,6 +68,9 @@ impl EdgeTimeSync {
             cloud_sync_interval_ms: Self::DEFAULT_CLOUD_SYNC_INTERVAL_MS,
             time_provider,
             uuid_generator,
+            cloud_sync_count: 0,
+            device_sync_requests: 0,
+            stats: EdgeSyncStats::default(),
         }
     }
 
@@ -76,6 +94,9 @@ impl EdgeTimeSync {
             cloud_sync_interval_ms,
             time_provider,
             uuid_generator,
+            cloud_sync_count: 0,
+            device_sync_requests: 0,
+            stats: EdgeSyncStats::default(),
         }
     }
 
@@ -86,6 +107,7 @@ impl EdgeTimeSync {
 
     /// Create cloud synchronization request
     pub fn create_cloud_sync_request(&mut self) -> Result<Message> {
+        self.stats.cloud_syncs = self.stats.cloud_syncs.saturating_add(1);
         self.sync_service
             .create_sync_request(NodeId::Cloud)
             .map_err(|_| Error::InvalidCommand)
@@ -93,17 +115,30 @@ impl EdgeTimeSync {
 
     /// Handle cloud synchronization response
     pub fn handle_cloud_sync_response(&mut self, response: &Message) -> Result<()> {
-        self.sync_service
+        let result = self
+            .sync_service
             .handle_sync_response(response)
-            .map_err(|_| Error::InvalidCommand)?;
+            .map_err(|_| Error::InvalidCommand);
 
-        let current_uptime = self.time_provider.monotonic_time_ms();
-        self.last_cloud_sync = Some(current_uptime);
-        Ok(())
+        match result {
+            Ok(_) => {
+                self.last_cloud_sync = Some(self.time_provider.monotonic_time_ms());
+                self.stats.cloud_successes = self.stats.cloud_successes.saturating_add(1);
+
+                // Extract accuracy from response
+                if let MessagePayload::TimeSync(TimeSyncPayload::Response { accuracy_ms, .. }) =
+                    &response.payload
+                {
+                    self.stats.last_accuracy_ms = *accuracy_ms;
+                }
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Create time broadcast to devices
-    pub fn create_time_broadcast(&self) -> Result<Message> {
+    pub fn create_time_broadcast(&mut self) -> Result<Message> {
         let current_uptime = self.time_provider.monotonic_time_ms();
         let current_time = self
             .sync_service
@@ -111,6 +146,8 @@ impl EdgeTimeSync {
             .map_err(|_| Error::InvalidCommand)?;
         let current_offset = self.sync_service.get_current_offset_ms();
         let accuracy = self.sync_service.get_current_accuracy();
+
+        self.stats.broadcasts_sent = self.stats.broadcasts_sent.saturating_add(1);
 
         Ok(Message {
             header: MessageHeader {
@@ -130,6 +167,7 @@ impl EdgeTimeSync {
 
     /// Handle device synchronization request
     pub fn handle_device_sync_request(&mut self, request: &Message) -> Result<Message> {
+        self.stats.device_requests = self.stats.device_requests.saturating_add(1);
         self.sync_service
             .handle_sync_request(request)
             .map_err(|_| Error::InvalidCommand)
@@ -153,9 +191,47 @@ impl EdgeTimeSync {
         self.sync_service.get_current_offset_ms()
     }
 
+    /// Get time since last cloud sync in milliseconds
+    pub fn time_since_last_cloud_sync_ms(&self) -> Option<u64> {
+        self.last_cloud_sync.map(|last_sync| {
+            let current_time = self.time_provider.monotonic_time_ms();
+            current_time.saturating_sub(last_sync)
+        })
+    }
+
+    /// Get cloud sync success rate (0.0 to 1.0)
+    pub fn get_cloud_sync_quality(&self) -> f32 {
+        if self.stats.cloud_syncs > 0 {
+            self.stats.cloud_successes as f32 / self.stats.cloud_syncs as f32
+        } else {
+            0.0
+        }
+    }
+
+    /// Check if cloud sync interval has elapsed
+    pub fn should_sync_with_cloud(&self) -> bool {
+        if let Some(last_sync) = self.last_cloud_sync {
+            let current_time = self.time_provider.monotonic_time_ms();
+            current_time.saturating_sub(last_sync) >= self.cloud_sync_interval_ms
+        } else {
+            true // No sync yet, should sync immediately
+        }
+    }
+
     /// Reset synchronization state
     pub fn reset(&mut self) {
         self.sync_service.reset_sync();
         self.last_cloud_sync = None;
+        // Keep stats for monitoring
+    }
+
+    /// Reset statistics (for testing or periodic cleanup)
+    pub fn reset_stats(&mut self) {
+        self.stats = EdgeSyncStats::default();
+    }
+
+    /// Get current uptime in milliseconds
+    pub fn get_uptime_ms(&self) -> u64 {
+        self.time_provider.monotonic_time_ms()
     }
 }

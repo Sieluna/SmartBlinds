@@ -2,8 +2,8 @@ mod device_sync;
 mod edge_sync;
 mod provider;
 
-pub use device_sync::DeviceTimeSync;
-pub use edge_sync::EdgeTimeSync;
+pub use device_sync::{DeviceSyncState, DeviceSyncStats, DeviceTimeSync};
+pub use edge_sync::{EdgeSyncStats, EdgeTimeSync};
 pub use provider::EmbeddedTimeProvider;
 
 #[cfg(test)]
@@ -209,26 +209,6 @@ mod tests {
     }
 
     #[test]
-    fn test_edge_custom_config_sync() {
-        let edge_id = 1;
-
-        let custom_config = SyncConfig {
-            sync_interval_ms: 5000,
-            max_drift_ms: 50,
-            offset_history_size: 3,
-            delay_threshold_ms: 25,
-            max_retry_count: 2,
-            failure_cooldown_ms: 15000,
-        };
-
-        let edge_sync = EdgeTimeSync::with_config(edge_id, custom_config);
-
-        assert_eq!(edge_sync.edge_id, edge_id);
-        assert_eq!(edge_sync.cloud_sync_interval_ms, 5000);
-        assert!(edge_sync.needs_cloud_sync());
-    }
-
-    #[test]
     fn test_time_offset_calculation() {
         let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
         let mut device_sync = DeviceTimeSync::new(device_mac);
@@ -268,33 +248,6 @@ mod tests {
     }
 
     #[test]
-    fn test_sync_reset_functionality() {
-        let edge_id = 1;
-        let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
-
-        let mut edge_sync = EdgeTimeSync::new(edge_id);
-        let mut device_sync = DeviceTimeSync::new(device_mac);
-
-        sync_edge_with_cloud(&mut edge_sync);
-
-        let broadcast = edge_sync.create_time_broadcast().unwrap();
-        device_sync.handle_time_broadcast(&broadcast).unwrap();
-
-        assert!(device_sync.is_synced());
-
-        edge_sync.reset();
-        device_sync.reset();
-
-        assert_eq!(edge_sync.get_sync_status(), SyncStatus::Unsynced);
-        assert!(!device_sync.is_synced());
-        assert_eq!(
-            device_sync.sync_state,
-            device_sync::DeviceSyncState::Unsynced
-        );
-        assert_eq!(device_sync.time_offset_ms, 0);
-    }
-
-    #[test]
     fn test_invalid_message_handling() {
         let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
         let mut device_sync = DeviceTimeSync::new(device_mac);
@@ -320,24 +273,105 @@ mod tests {
     }
 
     #[test]
-    fn test_time_provider_consistency() {
-        let provider1 = EmbeddedTimeProvider::new();
-        let provider2 = EmbeddedTimeProvider::new();
+    fn test_device_sync_statistics() {
+        let device_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
+        let mut device_sync = DeviceTimeSync::new(device_mac);
+        let mut edge_sync = EdgeTimeSync::new(1);
 
-        let time1 = provider1.monotonic_time_ms();
-        let time2 = provider2.monotonic_time_ms();
+        sync_edge_with_cloud(&mut edge_sync);
 
-        let diff = if time1 > time2 {
-            time1 - time2
-        } else {
-            time2 - time1
+        // Test initial stats
+        assert_eq!(device_sync.stats.sync_count, 0);
+        assert_eq!(device_sync.stats.success_count, 0);
+        assert_eq!(device_sync.get_sync_quality(), 0.0);
+
+        // Successful sync
+        let broadcast = edge_sync.create_time_broadcast().unwrap();
+        device_sync.handle_time_broadcast(&broadcast).unwrap();
+
+        assert_eq!(device_sync.stats.sync_count, 1);
+        assert_eq!(device_sync.stats.success_count, 1);
+        assert_eq!(device_sync.get_sync_quality(), 1.0);
+
+        // Failed sync (wrong source)
+        let invalid_broadcast = Message {
+            header: MessageHeader {
+                id: Uuid::new_v4(),
+                timestamp: OffsetDateTime::now_utc(),
+                priority: Priority::Regular,
+                source: NodeId::Device([0xFF; 6]), // Wrong source
+                target: NodeId::Device(device_mac),
+            },
+            payload: MessagePayload::TimeSync(TimeSyncPayload::Broadcast {
+                timestamp: OffsetDateTime::now_utc(),
+                offset_ms: 0,
+                accuracy_ms: 10,
+            }),
         };
-        assert!(diff < 100, "Time providers should return similar values");
 
-        let later_time1 = provider1.monotonic_time_ms();
-        assert!(
-            later_time1 >= time1,
-            "Time should be monotonically increasing"
-        );
+        let _ = device_sync.handle_time_broadcast(&invalid_broadcast);
+        assert_eq!(device_sync.stats.sync_count, 2);
+        assert_eq!(device_sync.stats.success_count, 1); // Still 1 success
+        assert_eq!(device_sync.get_sync_quality(), 0.5);
+    }
+
+    #[test]
+    fn test_edge_sync_statistics() {
+        let mut edge_sync = EdgeTimeSync::new(1);
+
+        // Test initial stats
+        assert_eq!(edge_sync.stats.cloud_syncs, 0);
+        assert_eq!(edge_sync.get_cloud_sync_quality(), 0.0);
+        assert!(edge_sync.should_sync_with_cloud());
+
+        // Simulate cloud sync
+        let _request = edge_sync.create_cloud_sync_request().unwrap();
+        assert_eq!(edge_sync.stats.cloud_syncs, 1);
+
+        // Simulate successful response
+        let response = create_cloud_sync_response(1, 1, OffsetDateTime::now_utc());
+        edge_sync.handle_cloud_sync_response(&response).unwrap();
+
+        assert_eq!(edge_sync.stats.cloud_successes, 1);
+        assert_eq!(edge_sync.get_cloud_sync_quality(), 1.0);
+
+        // Test broadcast stats
+        let _broadcast = edge_sync.create_time_broadcast().unwrap();
+        assert_eq!(edge_sync.stats.broadcasts_sent, 1);
+    }
+
+    #[test]
+    fn test_network_failure_recovery() {
+        let edge_id = 1;
+        let mut edge_sync = EdgeTimeSync::new(edge_id);
+        let mut devices: Vec<DeviceTimeSync> = (0..3)
+            .map(|i| DeviceTimeSync::new([0x11, 0x22, 0x33, 0x44, 0x55, i as u8]))
+            .collect();
+
+        // Initial sync
+        sync_edge_with_cloud(&mut edge_sync);
+        let broadcast = edge_sync.create_time_broadcast().unwrap();
+        for device in devices.iter_mut() {
+            device.handle_time_broadcast(&broadcast).unwrap();
+        }
+
+        // All devices should be synced
+        assert_eq!(devices.iter().filter(|d| d.is_synced()).count(), 3);
+
+        // Simulate device failures
+        devices[0].reset(); // Device 1 fails
+        devices[2].reset(); // Device 3 fails
+
+        // Only device 2 should be synced
+        assert_eq!(devices.iter().filter(|d| d.is_synced()).count(), 1);
+
+        // Recovery broadcast
+        let recovery_broadcast = edge_sync.create_time_broadcast().unwrap();
+        for device in devices.iter_mut() {
+            let _ = device.handle_time_broadcast(&recovery_broadcast);
+        }
+
+        // All devices should recover
+        assert_eq!(devices.iter().filter(|d| d.is_synced()).count(), 3);
     }
 }

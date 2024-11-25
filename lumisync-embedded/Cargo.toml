@@ -28,7 +28,7 @@ tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 [features]
 default = ["std", "ble", "tcp", "udp"]
-std = ["embassy-executor/arch-std", "embassy-time/std", "serde/std", "time/std", "uuid/v4"]
+std = ["embassy-executor/arch-std", "embassy-time/std", "lumisync_api/std", "serde/std", "time/std", "uuid/v4"]
 ble = ["dep:trouble-host", "dep:embassy-sync", "dep:static_cell"]
 tcp = ["dep:embassy-net", "embassy-net/tcp", "dep:embedded-io-async"]
 udp = ["dep:embassy-net", "embassy-net/udp"]

@@ -7,7 +7,6 @@ extern crate std;
 
 pub mod control;
 pub mod error;
-pub mod handler;
 pub mod message;
 pub mod network;
 pub mod sensor;
@@ -18,7 +17,6 @@ pub mod transport;
 
 pub use control::*;
 pub use error::*;
-pub use handler::*;
 pub use message::*;
 pub use network::*;
 pub use sensor::*;
